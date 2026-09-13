@@ -43,7 +43,7 @@ function zoneCard(name: string): HTMLElement {
 }
 
 async function openMap(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.click(screen.getByRole('link', { name: /open the live map/i }))
+  await user.click(screen.getByRole('link', { name: /open the map/i }))
   await screen.findByRole('button', { name: 'Reset view' })
 }
 

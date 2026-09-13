@@ -5,10 +5,17 @@ import { useReducedMotion } from 'motion/react'
  * Canvas wave background for the landing page (reactbits.dev "Waves" pattern,
  * MIT + Commons Clause — see `docs/design-references.md` §14).
  *
- * Three overlaid sine composites drift at different speeds and depths. The
- * palette is the app's own: amber, with one advisory-red trace far behind it,
- * all at low alpha — the water should read as *present*, not as an animation
- * demanding attention (the same restraint rule as the map's tide scan).
+ * Two overlaid sine composites drift at different speeds and depths, amber at
+ * low alpha — the water should read as *present*, not as an animation
+ * demanding attention.
+ *
+ * TUNED FOR LOW-END PHONES
+ * ------------------------
+ * The landing is most often opened on exactly the devices that jank first,
+ * so the ambient layer pays for itself: two layers (not three), a device
+ * pixel ratio cap of 1.5 (ambient strokes do not need retina sharpness),
+ * a coarser 6 px sampling step, and a ~30 fps frame cap — the drift is slow
+ * enough that halving the frame rate is invisible and halves the CPU cost.
  *
  * It is an `aria-hidden` canvas: pure ambience, zero interaction.
  */
@@ -30,10 +37,12 @@ interface WaveLayer {
 }
 
 const LAYERS: WaveLayer[] = [
-  { base: 0.34, amp: 12, wavelength: 360, speed: 0.34, alpha: 0.16, color: '#f0a500', phase: 0.0 },
-  { base: 0.52, amp: 20, wavelength: 540, speed: -0.21, alpha: 0.1, color: '#f0a500', phase: 2.1 },
-  { base: 0.72, amp: 30, wavelength: 780, speed: 0.13, alpha: 0.06, color: '#ff5252', phase: 4.2 },
+  { base: 0.34, amp: 12, wavelength: 360, speed: 0.34, alpha: 0.14, color: '#f0a500', phase: 0.0 },
+  { base: 0.56, amp: 22, wavelength: 600, speed: -0.21, alpha: 0.08, color: '#f0a500', phase: 2.1 },
 ]
+
+/** Minimum ms between drawn frames — caps the loop at ~30 fps. */
+const FRAME_INTERVAL_MS = 33
 
 export function Waves({ className = '' }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -53,9 +62,15 @@ export function Waves({ className = '' }: { className?: string }) {
     let height = 0
     let raf: number | undefined
     let running = false
+    // -Infinity so the very first rAF tick draws immediately; the cap only
+    // applies to subsequent frames.
+    let lastFrame = -Infinity
 
     function resize(): void {
-      const dpr = Math.min(globalThis.devicePixelRatio || 1, 2)
+      // Cap the backing-store scale: at DPR 3 phones the old cap doubled the
+      // pixel count the loop repaints every frame, for strokes nobody can
+      // tell apart at 1.5×.
+      const dpr = Math.min(globalThis.devicePixelRatio || 1, 1.5)
       width = el.clientWidth
       height = el.clientHeight
       el.width = Math.max(1, Math.round(width * dpr))
@@ -65,7 +80,7 @@ export function Waves({ className = '' }: { className?: string }) {
 
     function drawLayer(layer: WaveLayer, t: number): void {
       g.beginPath()
-      for (let x = -6; x <= width + 6; x += 4) {
+      for (let x = -6; x <= width + 6; x += 6) {
         const primary = Math.sin((x / layer.wavelength) * Math.PI * 2 + t * layer.speed + layer.phase)
         // A shorter, slower second harmonic keeps the crest from reading as
         // a metronome.
@@ -90,9 +105,13 @@ export function Waves({ className = '' }: { className?: string }) {
       g.globalAlpha = 1
     }
 
-    function loop(): void {
-      frame(performance.now() / 1000)
+    function loop(now: number): void {
       raf = requestAnimationFrame(loop)
+      // Frame cap: skip ticks that land sooner than ~33 ms after the last
+      // drawn frame, so 90/120 Hz displays do not multiply the cost.
+      if (now - lastFrame < FRAME_INTERVAL_MS) return
+      lastFrame = now
+      frame(now / 1000)
     }
 
     function start(): void {
