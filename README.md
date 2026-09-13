@@ -91,14 +91,13 @@ Then open `/admin` and type that passcode.
 
 ## 4. Connecting a real Firebase backend
 
-The app uses **Firestore + Cloud Storage only — no Firebase Auth**.
+The app uses **Firestore for data and Cloudinary for photo uploads — no Firebase Auth**.
 
 ### 4.1 Create the project
 
 1. [Firebase console](https://console.firebase.google.com) → **Add project**.
 2. **Build → Firestore Database → Create database** (start in production mode; the rules below replace the defaults).
-3. **Build → Storage → Get started** (same region as Firestore).
-4. **Project settings → General → Your apps → Web app (`</>`)** → register an app and copy the config object.
+3. **Project settings → General → Your apps → Web app (`</>`)** → register an app and copy the config object.
 
 ### 4.2 Fill in `.env`
 
@@ -106,9 +105,10 @@ The app uses **Firestore + Cloud Storage only — no Firebase Auth**.
 VITE_FIREBASE_API_KEY=AIza...
 VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=your-project
-VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000
 VITE_FIREBASE_APP_ID=1:000000000000:web:0000000000000000
+VITE_CLOUDINARY_CLOUD_NAME=your-cloud-name
+VITE_CLOUDINARY_UPLOAD_PRESET=your-unsigned-upload-preset
 VITE_ADMIN_PASSCODE=change-me
 ```
 
@@ -116,18 +116,26 @@ VITE_ADMIN_PASSCODE=change-me
 
 Restart `npm run dev` after editing `.env`; Vite only reads env files at startup.
 
-### 4.3 Deploy the security rules
+### 4.3 Configure Cloudinary photo uploads
 
-The repository ships `firestore.rules` and `storage.rules` (wired up by `firebase.json`):
+1. Create a free account at [Cloudinary](https://cloudinary.com/users/register_free).
+2. In the Cloudinary console, copy your **Cloud Name** from **Settings → API Keys** into `VITE_CLOUDINARY_CLOUD_NAME`.
+3. Go to **Settings → Upload → Upload presets**, create a preset with **Signing Mode: Unsigned**, and put its preset name in `VITE_CLOUDINARY_UPLOAD_PRESET`.
+
+The upload preset name and cloud name are public browser configuration, not secrets. Restrict the unsigned preset in Cloudinary (for example, allowed formats and file size) before production use.
+
+### 4.4 Deploy the Firestore security rules
+
+The repository ships `firestore.rules` (wired up by `firebase.json`):
 
 ```bash
 npm install -g firebase-tools
 firebase login
 firebase use --add          # pick your project
-firebase deploy --only firestore:rules,storage
+firebase deploy --only firestore:rules
 ```
 
-Or paste the contents into the console: **Firestore → Rules** and **Storage → Rules**.
+Or paste the contents into the Firebase console under **Firestore → Rules**.
 
 > ### ⚠️ These rules are insecure by design
 >
@@ -140,7 +148,7 @@ Or paste the contents into the console: **Firestore → Rules** and **Storage �
 >
 > Before any real deployment, add Firebase Auth with an admin custom claim and lock writes behind it. The rule files show the intended shape in a comment.
 
-### 4.4 Seed the zones
+### 4.5 Seed the zones
 
 Zones are **pre-seeded, never user-created**:
 
@@ -199,7 +207,7 @@ src/
     zones.ts              # the six pre-seeded zones + polygon helper
   lib/
     backend.ts            # Backend contract + which implementation to use
-    backend.firebase.ts   # Firestore + Storage plumbing
+    backend.firebase.ts   # Firestore + Cloudinary upload plumbing
     backend.demo.ts       # in-memory / localStorage implementation
     firestoreMapping.ts   # Firestore doc → domain type (pure, unit-tested)
     firebase.ts           # Firebase bootstrap + env parsing
@@ -241,7 +249,7 @@ src/
 | --- | --- | --- |
 | `zoneId` | string | which zone this is about |
 | `description` | string | 10–2000 characters |
-| `photoUrl` | string \| null | Cloud Storage download URL |
+| `photoUrl` | string \| null | Cloudinary secure image URL |
 | `submittedAt` | timestamp | `serverTimestamp()` |
 | `status` | string | `pending` \| `confirmed` \| `rejected` |
 
@@ -258,7 +266,7 @@ Any static host works — `npm run build` produces `dist/`.
 Notes:
 
 - Env vars are baked in **at build time**. Changing them requires a redeploy.
-- Add your production domain to the Firebase project's authorised domains, and make sure the deployed rules are the ones in this repo.
+- Make sure the deployed Firestore rules are the ones in this repo, and restrict the unsigned Cloudinary preset for production.
 - Map tiles come from OpenStreetMap and need the visitor to be online.
 
 ---
@@ -289,7 +297,7 @@ Before this is used for real public-health decisions, replace them with the actu
 3. **Add rate limiting / basic spam control** on report creation — right now anyone can flood the queue.
 4. **Store the reviewer and timestamp** on approve/reject for accountability (`reviewedAt` is already written; `reviewedBy` needs auth).
 5. **Replace the polygons** with real boundaries.
-6. **Compress or resize photos client-side** before upload to keep Storage costs and load times down.
+6. **Compress or resize photos client-side** before upload to keep bandwidth use and load times down.
 
 ---
 
@@ -299,12 +307,13 @@ Before this is used for real public-health decisions, replace them with the actu
 npm test
 ```
 
-66 tests across five files:
+67 tests across six files:
 
 - **`src/App.test.tsx`** (4, jsdom) — the whole loop rendered for real: map → tap a zone → report → `/admin` → wrong passcode rejected → correct passcode → Approve → zone turns advisory → public map shows the advisory. Plus a photo attachment run end to end, and a check that a too-short report submits nothing.
 - **`src/store.test.ts`** (13) — the real store against the real (in-memory) backend: seeded zones load `safe`; `submitReport` writes a pending report; short descriptions are refused; `approveReport` confirms the report **and** flips the zone to `advisory`; `rejectReport` leaves the zone untouched; manual revert to `safe` works; pending counts are right; the passcode gate only unlocks on an exact match.
-- **`src/lib/firestoreMapping.test.ts`** (20) — the production-only path: Timestamps, GeoPoints and unresolved `serverTimestamp()` values, typos in `status`, half-written documents, and Storage filename sanitising (including path traversal).
-- **`src/lib/firebase.test.ts`** (23) — `readFirebaseConfig` returns a config only when all six keys are real, so a half-filled `.env` falls back to demo mode instead of half-initialising Firebase.
+- **`src/lib/firestoreMapping.test.ts`** (20) — the production-only mapping path: Timestamps, GeoPoints, unresolved `serverTimestamp()` values, malformed documents, and polygon values.
+- **`src/lib/firebase.test.ts`** (21) — `readFirebaseConfig` returns a config only when all five keys are real, so a half-filled `.env` falls back to demo mode instead of half-initialising Firebase.
+- **`src/lib/backend.firebase.test.ts`** (3) — Cloudinary uploads use the correct endpoint and form fields, return `secure_url`, and surface configuration/API errors.
 - **`src/data/zones.test.ts`** (6) — polygon sanity: unique ids, plausible coordinates inside the Puerto Princesa box, the two Honda Bay zones do not overlap, bounding box contains every vertex.
 
 The Firestore mapping tests matter because that code only runs against a real project — the demo backend never touches it.
@@ -320,14 +329,14 @@ The Firestore mapping tests matter because that code only runs against a real pr
 | **Change a status colour** | `src/lib/status.ts` (`hex` is what Leaflet draws) **and** the `@theme` block in `src/index.css` — they are duplicated on purpose and must be kept in sync. |
 | **Change the advisory wording** | `guidance` in `src/lib/status.ts`; the long explainer is in `src/pages/MapPage.tsx`. |
 | **Change report validation limits** | `MIN/MAX_DESCRIPTION_LENGTH` in `src/store.ts`; the 2000-character cap is mirrored in `firestore.rules`. |
-| **Change the photo size limit** | `MAX_PHOTO_BYTES` in `src/lib/image.ts`, mirrored in `storage.rules`. |
-| **Tighten security** | `firestore.rules` + `storage.rules`, then `firebase deploy --only firestore:rules,storage`. Replacing the passcode means adding Firebase Auth and gating `Admin.tsx` on it. |
+| **Change the photo size limit** | `MAX_PHOTO_BYTES` in `src/lib/image.ts`; mirror the limit in the Cloudinary unsigned upload preset. |
+| **Tighten security** | Update `firestore.rules` and the Cloudinary unsigned preset restrictions. Replacing the passcode means adding Firebase Auth and gating `Admin.tsx` on it. |
 | **Add a new admin action** | Add the action to `src/store.ts` (all datastore calls live there) and call it from `src/pages/Admin.tsx`. |
 
 ---
 
 ## Stack
 
-React 19 · TypeScript 5.9 · Vite 8 · Zustand 5 · Tailwind CSS 4 · Leaflet + react-leaflet 5 · Firebase 12 (Firestore + Storage) · Vitest 5
+React 19 · TypeScript 5.9 · Vite 8 · Zustand 5 · Tailwind CSS 4 · Leaflet + react-leaflet 5 · Firebase 12 (Firestore) · Cloudinary (photo uploads) · Vitest 5
 
 **Not a medical or food-safety authority.** If someone shows symptoms of PSP after eating shellfish, treat it as an emergency and get them to a hospital immediately.

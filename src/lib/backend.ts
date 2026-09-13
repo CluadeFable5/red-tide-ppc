@@ -12,10 +12,10 @@ import { hasFirebaseConfig } from './firebase'
 /**
  * Everything the app knows how to do with a datastore.
  *
- * Components never touch Firestore or Storage directly — they call store
+ * Components never touch Firestore or Cloudinary directly — they call store
  * actions, and the store talks to a `Backend`. There are two implementations:
  *
- *   - `backend.firebase.ts` — Firestore + Cloud Storage (production)
+ *   - `backend.firebase.ts` — Firestore + Cloudinary (production)
  *   - `backend.demo.ts`     — in-memory + localStorage (no backend needed)
  *
  * Keeping the seam here means the store, the UI and the tests are all
@@ -53,7 +53,7 @@ export interface Backend {
 // ---------------------------------------------------------------------------
 // Composition root: pick the active backend once, at startup.
 //
-//   Firebase keys present  → Firestore + Storage
+//   Firebase keys present  → Firestore + Cloudinary
 //   keys missing / forced  → in-memory demo backend
 // ---------------------------------------------------------------------------
 
