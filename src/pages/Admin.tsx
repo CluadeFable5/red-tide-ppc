@@ -68,7 +68,7 @@ function AdminDashboard() {
         right={
           <>
             <Link
-              to="/"
+              to="/map"
               className="rounded-md border border-line bg-ink-3 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper/75 transition-colors hover:border-accent/40 hover:text-accent"
             >
               Public map

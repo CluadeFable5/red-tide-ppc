@@ -427,3 +427,146 @@ Cross-browser only. Everything above is Chromium (153, headless shell, touch emu
 the press cue's *lead time* on iOS is an assumption even though the mechanism (native `pointerdown`)
 is not. Real-device inertia on the sheet's spring, and screen-reader announcement of the anchor
 change, are also untouched by this pass.
+
+---
+
+## 14. Pre-map landing page, lazy map, and the zone-path production fix (2026-09-13)
+
+**Branch:** `arena/01a09a09-red-tide-ppc` → `main`
+**Scope:** a new route `/` (landing), the map moves to `/map` and becomes lazy-loaded,
+`/admin` unchanged. Plus a production bug fix in `Map.tsx` and its regression test.
+
+### 14.1 The landing page (`/`)
+
+A map-first app that opens on a map has a first-load cost problem and a message
+problem: the heaviest code (Leaflet) is paid for by a visitor who may leave after
+glancing, and a bare map says "here is water" but not "here is why you should care."
+The landing page fixes both.
+
+**Three reactbits-inspired pieces**, hand-rolled to the existing tokens so no new
+runtime dependency is added (reactbits is copy-source, per §2):
+
+| Piece | File | What it does |
+|---|---|---|
+| `DecryptedText` hero | `components/DecryptedText.tsx` | The "RED TIDE" headline starts as a field of random glyphs and locks into the real letters, left to right, over ~600 ms. A final-width placeholder (`invisible`) reserves the exact box so the scramble never reflows. `aria-label` sits on the `<h1>`; the scramble is `aria-hidden`. Respects `prefers-reduced-motion` (renders the finished string). |
+| `Waves` canvas background | `components/Waves.tsx` | Three overlaid sine composites (two amber, one advisory-red, low alpha) drift at different speeds. `requestAnimationFrame`, DPR-scaled, `ResizeObserver`-tracked, paused on `document.hidden`, still frame under reduced motion. `aria-hidden`, `pointer-events-none`. |
+| `CountUp` figures | `components/CountUp.tsx` | Counts from the currently-shown value to `to` with an ease-out, starting when the figure first enters the viewport (`IntersectionObserver`). When a **live** figure's target changes it re-tweens from where it is — a jump would read as a glitch. `tabular-nums` so digits don't wobble the layout. |
+
+**Live, not brochure.** Every figure is fed from the same feeds the map uses
+(zones watched, pending reports, under advisory, plus a static "30 min to first
+symptoms" from the PSP primer). The landing is therefore a *readout*, and that is
+exactly why Firebase ships with it — see §14.3.
+
+### 14.2 Lazy map, and the bundle numbers
+
+`MapPage` (the whole Leaflet tree) is now `React.lazy` behind `/map`. The `leaflet`
+and `firebase` code was *already* split into their own shared chunks by
+`vite.config`'s `manualChunks`, so lazy-loading the page only moves the page's own
+code out of the initial chunk — it does **not** re-merge the vendor libs.
+
+`vite build` output (gzipped), before → after:
+
+| Chunk | Before | After | Note |
+|---|---|---|---|
+| `index` (app) | 21.6 kB | 16.7 kB | landing replaces the eager map page |
+| `MapPage` (new) | — | 10.6 kB | loaded only on `/map` |
+| `firebase` | 135.2 kB | 135.2 kB | unchanged — see §14.3 |
+| `vendor` | 108.8 kB | 108.8 kB | unchanged |
+| `leaflet` | 48.7 kB | 48.7 kB | unchanged, still shared |
+| `router` | 14.1 kB | 14.1 kB | unchanged |
+
+Net: a visitor landing on `/` no longer pulls the map-page code, and the initial
+app chunk shrank by ~5 kB gz. The win is small in absolute terms *because the heavy
+libs were already chunked* — the real effect is that `/` and `/admin` mount
+without touching Leaflet at all, and the map's parse cost is deferred until it is
+actually asked for.
+
+### 14.3 Open item — Firebase is *not* deferred
+
+**The 135.2 kB `firebase` chunk is deliberately loaded on the landing page.** It is
+the largest single chunk and the obvious candidate for `React.lazy`, but deferring
+it would be wrong here for three compounding reasons:
+
+1. **The landing is live.** Its figures read the same Firestore feeds the map does.
+   If Firebase were deferred to `/map`, the landing would either show zeros/stale
+   numbers (dishonest on a *safety* surface) or have to open its own subscription
+   and then tear it down and reopen it on navigation — re-subscribing a realtime
+   feed twice in the life of one visit, for no user-facing benefit.
+2. **`App` already initialises the feeds once for the whole app** (a single
+   `useEffect` at the root). That one subscription serves the landing *and* the map
+   and the admin. Splitting it per-route to save the initial download would
+   duplicate the realtime connection and re-introduce exactly the double-subscribe
+   race the single root init exists to avoid.
+3. **It is not a cold cost the user feels.** The chunk is a cached, versioned asset;
+   the first-visit cost is one fetch, and the app's entire purpose is realtime.
+   Trading a one-time ~135 kB download for a landing that lies about the current
+   advisory state is a bad trade on a tool that exists to say "the water is bad
+   *right now*."
+
+Revisit only if the landing stops showing live data, or Firebase is replaced with a
+lighter transport. Until then: leave it in the initial bundle.
+
+### 14.4 The `zone-path` production bug, found and fixed
+
+**Symptom:** the polygon press/hover fill ramp and the `--selected` press exemption
+(§13.5) worked in dev but silently did nothing in a production build — the
+`path.zone-path` CSS selector never matched, because the class was never on the
+`<path>` in prod.
+
+**Root cause:** the class was passed inside `pathOptions`. react-leaflet applies
+`pathOptions` via `layer.setStyle(...)`, and Leaflet's `setStyle` writes only the
+stroke/fill *presentation attributes* — it never touches the SVG element's `class`.
+Leaflet reads `options.className` exactly **once**, in the SVG renderer's
+`_initPath`, when the path node is created as the layer is added to the map. So:
+
+- **dev (StrictMode):** effects run twice. The first pass stores `className` on the
+  layer's options via `setStyle`; the strict re-add re-runs `_initPath`, which reads
+  `options.className` *that time* and applies it. The class appears.
+- **prod (single pass):** `setStyle` stores `className` on options, but `_initPath`
+  already ran *before* that, when options had no class. Nothing ever re-applies it.
+  The class is absent. The ramp, the press cue and the `--selected` exemption all
+  depend on that class, so all of it died.
+
+**Fix (`Map.tsx`):**
+- `className="zone-path"` is now a **top-level** (constructor) prop, so Leaflet's
+  `_initPath` applies it at creation in every environment, dev or prod.
+- The `--selected` modifier, which changes over the layer's life, is synced
+  **imperatively**: a `useRef` to the `LeafletPolygon`, and an effect that toggles
+  `zone-path--selected` on `layer.getElement()`. A `layer.on('add', …)` subscription
+  covers the first application (children's effects commit before `MapContainer`
+  finishes adding the layer, so the plain effect alone would race it).
+- The press-feedback `instanceof SVGPathElement` check was replaced with a
+  namespace/tag duck-typed guard (`isZonePath`) — `SVGPathElement` is not defined on
+  `window` in jsdom, where the regression tests run.
+
+**Regression test (`Map.test.tsx`, 6):** renders `<Map>` the way production does —
+one pass, no StrictMode — and asserts the class is actually on the path node, that
+`--selected` is applied on first mount for a pre-selected zone, that it moves when
+selection changes, that the fill-ramp attribute follows selection, and that the
+press class lights on `pointerdown` and releases on `pointerup` (and never dims an
+already-selected polygon). This is the test that fails against the old
+`pathOptions.className` code.
+
+### 14.5 The six-item browser pass, now in two halves
+
+The visual checklist (peek row, drag/flick anchors, polygon fill ramp, attribution
+legibility, zoom-control clearance, report → approve E2E) previously lived in
+throwaway debug scripts. It is now split deliberately:
+
+- **`scripts/final-pass.mjs`** — the script of record, run in **real Chromium**
+  (desktop 1280×800 + mobile 375×667 touch) against the **production** build. This
+  is the only half that can prove geometry and motion: bounding-box clearance,
+  computed fill-opacity mid-ramp, a real flick's release velocity, and the E2E loop
+  through a real browser. `node scripts/final-pass.mjs` → 6/6, exit 0.
+- **`src/pages/mapPass.test.tsx`** — the DOM/behaviour half of the same six items,
+  in **jsdom**, in CI. It proves what a DOM without a layout engine can prove:
+  peek-row content and the hidden body, anchor cycling, the `zone-path` ramp
+  attributes, attribution, zoom-control placement, and the full loop through the
+  demo backend. So the checklist has executable coverage even in a sandbox with no
+  browser at all.
+
+The flick-velocity projection itself is pure logic in `sheetAnchors.test.ts` (§13).
+
+**Honest limitation:** `final-pass.mjs` runs Chromium only. The two halves agree on
+*what* to check, but a sandbox without a real browser can only run the jsdom half —
+the geometry/motion assertions then ride on the last real-browser run, not on CI.

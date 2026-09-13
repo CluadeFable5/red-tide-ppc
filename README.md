@@ -47,9 +47,15 @@ Red Tide PPC gives those sightings somewhere to go, and gives a local reviewer a
 
 ## 2. What the app does
 
+**Routes**
+
+- `/` — the landing page: what this is, the live zone readout and figures, and the way in.
+- `/map` — the public map (lazy-loaded; the landing and admin never pay for Leaflet).
+- `/admin` — the passcode-gated review queue.
+
 **Core loop**
 
-1. **Public map** — a Leaflet map of the Puerto Princesa coastline. Each zone is a coloured polygon:
+1. **Public map at `/map`** — a Leaflet map of the Puerto Princesa coastline. Each zone is a coloured polygon:
    - 🟢 **Safe** — no advisory recorded.
    - 🟡 **Unconfirmed** — flagged by an admin as needing a check; treat with caution.
    - 🔴 **Advisory** — confirmed; do not eat shellfish from this zone.
@@ -226,6 +232,10 @@ src/
     StatusPip.tsx         # the status dot (pops on status change)
     Ambient.tsx           # advisory-signal gauge + map scanline (schematic)
     Header.tsx  Legend.tsx  StatusBadge.tsx  Notice.tsx  DemoBanner.tsx
+    DecryptedText.tsx     # landing hero: glyphs resolve left to right (reactbits pattern)
+    Waves.tsx             # landing background: three sine composites on a canvas
+    CountUp.tsx           # landing figures: counts up on first view, re-tweens on live updates
+    Map.test.tsx          # regression: the zone-path classes in a production render
   motion/
     RouteTransition.tsx   # map <-> admin cross-fade
     sheetAnchors.ts       # peek/mid/full maths + snap + underlay (pure, tested)
@@ -234,7 +244,8 @@ src/
   styles/
     statusTheme.ts        # status -> dark-theme colours, classes, map paint
   pages/
-    MapPage.tsx           # public view
+    Landing.tsx           # / — pre-map landing (DecryptedText hero, Waves, CountUp)
+    MapPage.tsx           # /map public view (lazy-loaded)
     Admin.tsx             # /admin review dashboard
 ```
 
@@ -326,16 +337,32 @@ Before this is used for real public-health decisions, replace them with the actu
 npm test
 ```
 
-67 tests across six files:
+142 tests across eleven files:
 
-- **`src/App.test.tsx`** (4, jsdom) — the whole loop rendered for real: map → tap a zone → report → `/admin` → wrong passcode rejected → correct passcode → Approve → zone turns advisory → public map shows the advisory. Plus a photo attachment run end to end, and a check that a too-short report submits nothing.
+- **`src/App.test.tsx`** (5, jsdom) — the whole loop rendered for real: landing → map → tap a zone → report → `/admin` → wrong passcode rejected → correct passcode → Approve → zone turns advisory → public map shows the advisory. Plus the landing page's decrypted hero and live readout, a photo attachment run end to end, and a check that a too-short report submits nothing.
+- **`src/pages/mapPass.test.tsx`** (6, jsdom) — the six-item visual pass, DOM side: peek row content + hidden body, anchor cycling, the `zone-path` fill ramp, attribution, zoom-control placement, and the full report → approve loop.
+- **`src/components/Map.test.tsx`** (6, jsdom) — the production `zone-path` regression: the class lands on the path node in a single-pass render (no StrictMode double effect), `--selected` syncs from first mount onward, the fill ramp follows selection, and press feedback lights/releases the polygon.
 - **`src/store.test.ts`** (13) — the real store against the real (in-memory) backend: seeded zones load `safe`; `submitReport` writes a pending report; short descriptions are refused; `approveReport` confirms the report **and** flips the zone to `advisory`; `rejectReport` leaves the zone untouched; manual revert to `safe` works; pending counts are right; the passcode gate only unlocks on an exact match.
-- **`src/lib/firestoreMapping.test.ts`** (20) — the production-only mapping path: Timestamps, GeoPoints, unresolved `serverTimestamp()` values, malformed documents, and polygon values.
+- **`src/lib/firestoreMapping.test.ts`** (28) — the production-only mapping path: Timestamps, GeoPoints, unresolved `serverTimestamp()` values, malformed documents, and polygon values.
+- **`src/motion/sheetAnchors.test.ts`** (32) — the sheet's snap arithmetic: offsets, clamping, velocity projection, flick gating, underlay mapping.
 - **`src/lib/firebase.test.ts`** (21) — `readFirebaseConfig` returns a config only when all five keys are real, so a half-filled `.env` falls back to demo mode instead of half-initialising Firebase.
+- **`src/motion/readouts.test.ts`** (18) — the data-derived copy: peek summary, anchor readout, dominant status, advisory share.
+- **`src/data/zones.test.ts`** (8) — polygon sanity: unique ids, plausible coordinates inside the Puerto Princesa box, the two Honda Bay zones do not overlap, bounding box contains every vertex.
 - **`src/lib/backend.firebase.test.ts`** (3) — Cloudinary uploads use the correct endpoint and form fields, return `secure_url`, and surface configuration/API errors.
-- **`src/data/zones.test.ts`** (6) — polygon sanity: unique ids, plausible coordinates inside the Puerto Princesa box, the two Honda Bay zones do not overlap, bounding box contains every vertex.
+- **`src/lib/firestoreSeedValidation.test.ts`** (2) — seed payloads pass the shape Firestore actually rejects on.
 
 The Firestore mapping tests matter because that code only runs against a real project — the demo backend never touches it.
+
+### Browser pass (real Chromium)
+
+`scripts/final-pass.mjs` is the script of record for the six-item visual checklist (peek row, drag/flick anchors, polygon fill ramp, attribution legibility, zoom-control clearance, report → approve E2E). It runs the **production build** in headless Chromium at desktop and mobile sizes:
+
+```bash
+npm run preview        # in one terminal — serves dist/ on :4173
+node scripts/final-pass.mjs   # in another — 6/6 checks, exit 0
+```
+
+Tiles and webfonts are allowed to fail (offline sandboxes): every assertion targets the app's own UI. Where a sandbox has no browser at all, the DOM/behaviour half of the same six items runs in CI via `src/pages/mapPass.test.tsx`.
 
 ---
 
