@@ -4,9 +4,11 @@ import { AdminGate } from '../components/AdminGate'
 import { DemoBanner } from '../components/DemoBanner'
 import { Header } from '../components/Header'
 import { Notice } from '../components/Notice'
+import { ReportQueueSkeleton } from '../components/LoadingState'
 import { ReportCard } from '../components/ReportCard'
 import { ZoneStatusBadge } from '../components/StatusBadge'
 import { ZONE_STATUS_META } from '../lib/status'
+import { zoneTheme } from '../styles/statusTheme'
 import {
   selectPendingCountByZone,
   selectPendingReports,
@@ -40,6 +42,7 @@ export function Admin() {
 function AdminDashboard() {
   const zones = useAppStore((state) => state.zones)
   const reports = useAppStore((state) => state.reports)
+  const reportsReady = useAppStore((state) => state.reportsReady)
   const busyReportId = useAppStore((state) => state.busyReportId)
   const busyZoneId = useAppStore((state) => state.busyZoneId)
   const approveReport = useAppStore((state) => state.approveReport)
@@ -66,14 +69,14 @@ function AdminDashboard() {
           <>
             <Link
               to="/"
-              className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20"
+              className="rounded-md border border-line bg-ink-3 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper/75 transition-colors hover:border-accent/40 hover:text-accent"
             >
               Public map
             </Link>
             <button
               type="button"
               onClick={lockAdmin}
-              className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20"
+              className="rounded-md border border-line bg-ink-3 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper/75 transition-colors hover:border-advisory/40 hover:text-advisory"
             >
               Lock
             </button>
@@ -82,7 +85,7 @@ function AdminDashboard() {
       />
       <DemoBanner />
 
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:py-8">
+      <main className="mx-auto max-w-3xl px-4 pb-16 pt-5 sm:pt-7">
         <div className="grid grid-cols-3 gap-3">
           <Stat label="Pending" value={pendingReports.length} tone="amber" />
           <Stat label="Under advisory" value={advisoryZones.length} tone="red" />
@@ -92,7 +95,7 @@ function AdminDashboard() {
         <div
           role="tablist"
           aria-label="Admin sections"
-          className="mt-6 flex gap-1 rounded-xl bg-slate-200/70 p-1"
+          className="flex gap-1 rounded-xl border border-line bg-ink-2 p-1"
         >
           {TABS.map((entry) => {
             const isActive = entry.id === tab
@@ -103,15 +106,15 @@ function AdminDashboard() {
                 aria-selected={isActive}
                 type="button"
                 onClick={() => setTab(entry.id)}
-                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                className={`flex-1 rounded-lg px-3 py-2 font-mono text-[11px] uppercase tracking-[0.1em] transition-colors duration-200 ${
                   isActive
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
+                    ? 'bg-accent text-ink'
+                    : 'text-muted hover:bg-white/5 hover:text-paper'
                 }`}
               >
                 {entry.label}
                 {entry.id === 'pending' && pendingReports.length > 0 && (
-                  <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] text-white">
+                  <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${isActive ? 'bg-ink/20 text-ink' : 'bg-accent text-ink'}`}>
                     {pendingReports.length}
                   </span>
                 )}
@@ -122,14 +125,16 @@ function AdminDashboard() {
 
         {tab === 'pending' && (
           <section className="mt-5" aria-label="Pending reports">
-            {pendingReports.length === 0 ? (
+            {!reportsReady ? (
+              <ReportQueueSkeleton />
+            ) : pendingReports.length === 0 ? (
               <EmptyState
                 title="Nothing waiting for review"
                 body="New community reports will show up here as soon as they are submitted."
               />
             ) : (
               <>
-                <p className="mb-3 text-xs leading-relaxed text-slate-500">
+                <p className="mb-3 text-xs leading-relaxed text-muted">
                   Approving confirms the report and puts its zone under advisory
                   immediately. Rejecting dismisses the report and leaves the zone
                   unchanged.
@@ -177,7 +182,7 @@ function AdminDashboard() {
 
         {tab === 'zones' && (
           <section className="mt-5" aria-label="Zone status control">
-            <p className="mb-3 text-xs leading-relaxed text-slate-500">
+            <p className="mb-3 text-xs leading-relaxed text-muted">
               Zone status only changes here — there is no automatic expiry. Revert
               a zone to <strong>Safe</strong> yourself once the water is cleared.
             </p>
@@ -188,14 +193,14 @@ function AdminDashboard() {
                 return (
                   <li
                     key={zone.id}
-                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                    className="rounded-xl border border-line bg-ink-2 p-4"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <h3 className="text-sm font-bold text-slate-900">
+                        <h3 className="font-display text-lg leading-none text-paper">
                           {zone.name}
                         </h3>
-                        <p className="mt-0.5 text-[11px] text-slate-400">
+                        <p className="mt-1 font-mono text-[10px] text-faint">
                           {pendingCounts[zone.id] ?? 0} pending · id{' '}
                           <span className="font-mono">{zone.id}</span>
                         </p>
@@ -206,6 +211,7 @@ function AdminDashboard() {
                     <div className="mt-3 flex flex-wrap gap-1.5">
                       {ZONE_STATUS_CHOICES.map((status) => {
                         const meta = ZONE_STATUS_META[status]
+                        const theme = zoneTheme(status)
                         const isActive = zone.status === status
 
                         return (
@@ -214,13 +220,20 @@ function AdminDashboard() {
                             type="button"
                             disabled={busy}
                             onClick={() => setZoneStatus(zone.id, status)}
-                            className={`rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            aria-pressed={isActive}
+                            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 font-mono text-[10px] uppercase tracking-[0.1em] transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-45 ${
                               isActive
-                                ? meta.badgeClass
-                                : 'border border-slate-300 text-slate-600 hover:bg-slate-50'
+                                ? theme.solidClass
+                                : 'border border-line text-muted hover:border-accent/40 hover:text-accent'
                             }`}
                           >
-                            {isActive ? `● ${meta.label}` : meta.label}
+                            {isActive && (
+                              <span
+                                className="h-1.5 w-1.5 rounded-full bg-ink/45"
+                                aria-hidden="true"
+                              />
+                            )}
+                            {meta.label}
                           </button>
                         )
                       })}
@@ -232,7 +245,7 @@ function AdminDashboard() {
           </section>
         )}
 
-        <p className="mt-8 rounded-lg bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-500 ring-1 ring-inset ring-slate-200">
+        <p className="mt-8 rounded-lg border border-line bg-ink-2 p-3 font-mono text-[10px] leading-relaxed text-faint">
           This view is protected by a client-side passcode only. Anyone with the
           page source can read it, so treat the passcode as a demo lock — not
           security. Replace it with Firebase Auth before this is used for real
@@ -256,15 +269,19 @@ function Stat({
 }) {
   const toneClass =
     tone === 'amber'
-      ? 'text-amber-600'
+      ? 'text-accent'
       : tone === 'red'
         ? 'text-advisory'
-        : 'text-slate-700'
+        : 'text-paper/80'
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 text-center shadow-sm">
-      <p className={`text-2xl font-bold tabular-nums ${toneClass}`}>{value}</p>
-      <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-400">
+    <div className="rounded-xl border border-line bg-ink-2 p-3">
+      {/* Bebas Neue for the number: at a glance, the count is what an admin
+          needs, and the condensed face reads larger in the same space. */}
+      <p className={`font-display text-3xl leading-none tabular-nums ${toneClass}`}>
+        {value}
+      </p>
+      <p className="mt-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">
         {label}
       </p>
     </div>
@@ -273,9 +290,9 @@ function Stat({
 
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
-      <p className="text-sm font-semibold text-slate-700">{title}</p>
-      <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-slate-500">
+    <div className="rounded-xl border border-dashed border-line bg-ink-2 p-8 text-center">
+      <p className="font-display text-xl leading-none text-paper">{title}</p>
+      <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-muted">
         {body}
       </p>
     </div>

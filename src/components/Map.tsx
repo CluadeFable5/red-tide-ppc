@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { MapContainer, Polygon, Popup, TileLayer, useMap } from 'react-leaflet'
+import { MapContainer, Polygon, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet'
 import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, zonesBoundingBox } from '../data/zones'
 import { zoneStatusMeta } from '../lib/status'
 // `LatLng` here is our own [lat, lng] tuple, which Leaflet accepts directly.
@@ -94,8 +94,13 @@ export function Map({
       zoom={MAP_DEFAULT_ZOOM}
       maxBounds={MAP_MAX_BOUNDS}
       scrollWheelZoom
+      // Zoom buttons are moved to the top-right and hidden on phones (see
+      // index.css): the header overlay occupies the top of the screen, and
+      // pinch-zoom is the expected gesture on a touch device anyway.
+      zoomControl={false}
       className="h-full w-full"
     >
+      <ZoomControl position="topright" />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -124,7 +129,14 @@ export function Map({
               click: () => onSelectZone(zone.id),
             }}
           >
-            <Popup maxWidth={320} minWidth={250} autoPanPadding={[16, 16]}>
+            <Popup
+              // The class lands on Leaflet's `.leaflet-popup` container and is
+              // what lets index.css tint the card, tip and glow per status.
+              className={`zone-popup zone-popup--${zone.status}`}
+              maxWidth={340}
+              minWidth={260}
+              autoPanPadding={[16, 16]}
+            >
               <ZonePopup
                 zone={zone}
                 pendingCount={pendingCounts[zone.id] ?? 0}
