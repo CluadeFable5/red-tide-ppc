@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'vitest'
+import {
+  containsNestedArrays,
+  normalizePolygon,
+  toFirestorePolygon,
+} from '../lib/firestoreMapping'
 import { MAP_CENTER, SEED_ZONES, zonesBoundingBox } from './zones'
 
 /**
@@ -37,6 +42,28 @@ describe('SEED_ZONES', () => {
         expect(lng, `${zone.id} lng ${lng}`).toBeGreaterThan(118.5)
         expect(lng, `${zone.id} lng ${lng}`).toBeLessThan(119.1)
       }
+    }
+  })
+
+  it('is not storable as-is: raw tuple polygons contain nested arrays', () => {
+    // Documents why scripts/seed.ts must serialize before writing: Firestore
+    // rejects arrays-of-arrays, which is exactly what [lat, lng] tuples are.
+    // This is the shape that broke `npm run seed` against a live project.
+    for (const zone of SEED_ZONES) {
+      expect(containsNestedArrays(zone.polygon), `${zone.id} raw shape`).toBe(
+        true,
+      )
+    }
+  })
+
+  it('becomes Firestore-storable once serialized, and reads back intact', () => {
+    for (const zone of SEED_ZONES) {
+      const stored = toFirestorePolygon(zone.polygon)
+      expect(
+        containsNestedArrays(stored),
+        `${zone.id} stored shape must have no nested arrays`,
+      ).toBe(false)
+      expect(normalizePolygon(stored)).toEqual(zone.polygon)
     }
   })
 

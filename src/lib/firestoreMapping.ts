@@ -78,6 +78,46 @@ export function normalizePolygon(value: unknown): LatLng[] {
   return points
 }
 
+/** A polygon vertex as Firestore stores it: an object, never a tuple. */
+export interface FirestoreLatLng {
+  lat: number
+  lng: number
+}
+
+/**
+ * The write-side counterpart of {@link normalizePolygon}.
+ *
+ * Firestore rejects nested arrays outright (`setDoc() called with invalid
+ * data. Nested arrays are not supported`), so the domain `[lat, lng]` tuples
+ * must never be written directly — that bug shipped once and killed
+ * `npm run seed` against a live project. Each vertex becomes a `{lat, lng}`
+ * object, which `normalizePolygon` reads back into a tuple for Leaflet.
+ */
+export function toFirestorePolygon(
+  points: readonly LatLng[],
+): FirestoreLatLng[] {
+  return points.map(([lat, lng]) => ({ lat, lng }))
+}
+
+/**
+ * True when an array appears directly inside another array anywhere in
+ * `value` — the exact class of shape Firestore refuses on write. Not a full
+ * reimplementation of the SDK's validator; just the one invariant that
+ * matters here, for small acyclic documents like a seed payload. Arrays of
+ * objects (including Firestore's `GeoPoint`/sentinel values) are fine.
+ */
+export function containsNestedArrays(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(
+      (item) => Array.isArray(item) || containsNestedArrays(item),
+    )
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value).some(containsNestedArrays)
+  }
+  return false
+}
+
 export function mapZone(id: string, data: Record<string, unknown>): Zone {
   return {
     id,
