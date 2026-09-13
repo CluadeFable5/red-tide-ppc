@@ -1,0 +1,3 @@
+# Netlify: client-side SPA (react-router BrowserRouter) — every unknown path
+# must fall through to index.html so /admin resolves on a hard refresh.
+/*    /index.html   200

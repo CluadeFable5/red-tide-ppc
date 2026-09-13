@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// Red Tide PPC — Storage security rules
+//
+// *** INSECURE BY DESIGN — MVP ONLY ***
+// Anyone may upload a report photo without signing in. The rules below limit
+// the damage to images under 5 MB; they do not authenticate the uploader.
+// ---------------------------------------------------------------------------
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /reports/{allPaths=**} {
+      allow read: if true;
+
+      allow write: if request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // Everything else: no anonymous access.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
