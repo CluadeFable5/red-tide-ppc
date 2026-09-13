@@ -28,7 +28,7 @@ const PASSCODE = 'test-passcode'
  * location state and is not a navigation it will honour.)
  */
 async function openMap(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-  await user.click(screen.getByRole('link', { name: /open the live map/i }))
+  await user.click(screen.getByRole('link', { name: /open the map/i }))
   // The map page is lazy; wait for it to mount.
   await screen.findByRole('button', { name: 'Reset view' })
 }
@@ -89,7 +89,7 @@ describe('landing page (/)', () => {
       { timeout: 3000 },
     )
 
-    expect(screen.getByRole('link', { name: /open the live map/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /open the map/i })).toBeTruthy()
     expect(screen.getByRole('link', { name: /report a sighting/i })).toBeTruthy()
 
     // The live readout lands from the demo backend (synchronous subscribe).

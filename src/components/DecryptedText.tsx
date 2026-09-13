@@ -2,27 +2,43 @@ import { useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
 
 /**
- * reactbits-style "Decryption" headline: every character starts life as a
- * random glyph and locks into the real one, left to right, so the title reads
- * as the data being resolved — the register of this app's own instrument
- * chrome, not a typewriter gimmick.
+ * "Decryption" headline: every character starts life as a random glyph and
+ * locks into the real one, left to right, so the title reads as the data
+ * being resolved.
  *
  * (Pattern after reactbits.dev, MIT + Commons Clause — see
  * `docs/design-references.md` §14 for the licence note.)
  *
- * The scrambling is done on a ~30 ms interval rather than per-frame: the eye
- * cannot read glyphs changing faster than this, and a 33 fps scramble costs a
- * fraction of the 60 fps one.
+ * KEPT CHEAP ON PURPOSE
+ * ---------------------
+ * The scramble runs on a 20 ms interval (the eye cannot read glyphs changing
+ * faster) and resolves in well under half a second, then tears itself down —
+ * no timers survive the intro. On small viewports (the low-end phones this
+ * tool is mostly used on) and under reduced motion the effect is skipped
+ * entirely and the title renders as plain text.
  */
 
-const GLYPHS = '!<>-_\\/[]{}=+*^?#01·'
+const GLYPHS = '!<>-_\\\\/[]{}=+*^?#01·'
 
 /** ms between scramble ticks. */
-const TICK_MS = 30
+const TICK_MS = 20
 /** Ticks each character spends as a random glyph before it locks. */
-const PER_CHAR_TICKS = 2
+const PER_CHAR_TICKS = 1
 /** Ticks of pure scramble before the first character locks. */
-const START_TICKS = 4
+const START_TICKS = 2
+
+/**
+ * Below the `sm` breakpoint the scramble is skipped: it is decoration the
+ * layout gets no value from, and setInterval churn on a low-end phone is
+ * exactly the jank the landing page cannot afford.
+ */
+function smallViewport(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 640px)').matches
+  )
+}
 
 function scrambled(text: string): string {
   return Array.from(text)
@@ -44,12 +60,12 @@ export function DecryptedText({
 }) {
   const reduceMotion = useReducedMotion()
   const [display, setDisplay] = useState<string>(() =>
-    reduceMotion ? text : scrambled(text),
+    reduceMotion || smallViewport() ? text : scrambled(text),
   )
   const finishedRef = useRef(false)
 
   useEffect(() => {
-    if (reduceMotion || finishedRef.current) {
+    if (reduceMotion || smallViewport() || finishedRef.current) {
       setDisplay(text)
       return
     }
