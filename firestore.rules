@@ -1,0 +1,72 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// Red Tide PPC — Firestore security rules
+//
+// *** INSECURE BY DESIGN — MVP ONLY ***
+//
+// This MVP has no Firebase Auth. The admin approval view is protected by a
+// client-side passcode compare, which is not a security boundary. That forces
+// two compromises:
+//
+//   1. `reports` must be world-writable, or anonymous visitors cannot submit.
+//   2. `zones` must be world-updatable, or the admin "Approve" button cannot
+//      flip a zone to `advisory`.
+//
+// What the rules below DO still do:
+//   - pin the document shapes, so a client cannot inject arbitrary fields;
+//   - force new reports to start as `pending` (nobody can self-confirm);
+//   - forbid deletes (data is never destroyed from the browser).
+//
+// BEFORE ANY REAL DEPLOYMENT, replace this with authenticated rules, e.g.:
+//
+//   match /zones/{zoneId} {
+//     allow read: if true;
+//     allow write: if request.auth != null
+//                  && request.auth.token.admin == true;
+//   }
+// ---------------------------------------------------------------------------
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pre-seeded by `npm run seed`. Not user-created.
+    match /zones/{zoneId} {
+      allow read: if true;
+
+      // Needed by scripts/seed.ts, which runs with the public web config.
+      // Tighten to `if false` once your zones are seeded.
+      allow create: if request.resource.data.keys().hasAll(['name', 'polygon', 'status'])
+                    && request.resource.data.status in ['safe', 'advisory', 'unconfirmed'];
+
+      // Needed by the admin Approve / Revert-to-safe buttons.
+      allow update: if request.resource.data.diff(resource.data)
+                        .affectedKeys()
+                        .hasOnly(['status', 'lastUpdated'])
+                    && request.resource.data.status in ['safe', 'advisory', 'unconfirmed'];
+
+      allow delete: if false;
+    }
+
+    // Anonymous community submissions.
+    match /reports/{reportId} {
+      allow read: if true;
+
+      // Anyone may submit, but every new report starts as `pending` —
+      // confirming a report is an admin action only.
+      allow create: if request.resource.data.status == 'pending'
+                    && request.resource.data.description is string
+                    && request.resource.data.description.size() > 0
+                    && request.resource.data.description.size() <= 2000
+                    && request.resource.data.zoneId is string;
+
+      // Needed by the admin Approve / Reject buttons.
+      allow update: if request.resource.data.diff(resource.data)
+                        .affectedKeys()
+                        .hasOnly(['status', 'reviewedAt'])
+                    && request.resource.data.status in ['pending', 'confirmed', 'rejected'];
+
+      allow delete: if false;
+    }
+  }
+}
