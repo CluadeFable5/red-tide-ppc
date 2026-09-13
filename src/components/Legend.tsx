@@ -1,79 +1,73 @@
+import { motion } from 'motion/react'
+import type { MotionStyle } from 'motion/react'
 import { ZONE_STATUS_ORDER } from '../lib/status'
 import { zoneLabel, zoneTheme } from '../styles/statusTheme'
 import type { ZoneStatus } from '../types'
+import { StatusPip } from './StatusPip'
 
 /**
- * Persistent map key.
+ * Floating status key: three pills over the map, not a strip in the layout.
  *
- * Deliberately NOT a modal or a toggle: the whole point is that a user glancing
- * at the map can always answer "what does amber mean?" without tapping
- * anything. It sits bottom-left over the map at every breakpoint.
+ * It used to be a full-width bar pinned to the bottom-left. Two problems with
+ * that: it consumed a band of the map at every breakpoint, and once the zone
+ * sheet arrived it would have sat *under* the sheet exactly where the handle is.
+ * As a pill row anchored to the top-left it costs no layout height at all, sits
+ * in the dead space under the app bar, and can fade out as the sheet rises
+ * (see `chromeOpacity`) instead of being covered.
  *
- * Layout notes for 375px:
- *  - three equal columns; the label uses Bebas Neue, which is condensed enough
- *    that "UNCONFIRMED" fits in a ~110px column without truncating
- *  - counts are JetBrains Mono so the digits stay column-aligned as they change
- *  - `pointer-events-none` on the wrapper and `auto` on the card, so the
- *    surrounding strip does not swallow map drags
+ * The wrapper is `pointer-events-none` and only the pills take pointer events,
+ * so a drag started on the map is never swallowed by the legend's bounding box.
  */
-export function Legend({ counts }: { counts: Record<ZoneStatus, number> }) {
-  // `bottom-6` on phones clears Leaflet's attribution strip, which is legally
-  // required and sits at bottom-right.
+export function Legend({
+  counts,
+  style,
+}: {
+  counts: Record<ZoneStatus, number>
+  /** Opacity is driven by the sheet's progress; the legend fades, it does not shrink. */
+  style?: MotionStyle
+}) {
   return (
-    <div className="pointer-events-none absolute inset-x-3 bottom-6 z-[1010] flex justify-start sm:bottom-3">
+    <motion.div
+      style={style}
+      className="pointer-events-none absolute inset-x-3 top-[4.5rem] z-[1010] mt-[env(safe-area-inset-top)] flex flex-wrap items-center gap-1.5"
+    >
       <div
-        className="pointer-events-auto w-full overflow-hidden rounded-xl border border-line bg-ink-2/88 backdrop-blur-md sm:w-auto"
         role="group"
         aria-label="Zone status key"
+        className="pointer-events-auto flex flex-wrap items-center gap-1.5"
       >
-        <div className="grid grid-cols-3 divide-x divide-line/70">
-          {ZONE_STATUS_ORDER.map((status) => (
-            <LegendCell
-              key={status}
-              status={status}
-              count={counts[status] ?? 0}
-            />
-          ))}
-        </div>
+        {ZONE_STATUS_ORDER.map((status) => (
+          <LegendChip key={status} status={status} count={counts[status] ?? 0} />
+        ))}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
-function LegendCell({ status, count }: { status: ZoneStatus; count: number }) {
+function LegendChip({ status, count }: { status: ZoneStatus; count: number }) {
   const theme = zoneTheme(status)
   const label = zoneLabel(status)
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 sm:px-3.5">
-      {/* The chip carries the pulse for `unconfirmed`, so the "keep watching"
-          state draws the eye even when nobody is reading the labels. */}
-      <span className="relative grid h-2.5 w-2.5 shrink-0 place-items-center">
-        <span
-          className="absolute inset-0 rounded-full"
-          style={{ backgroundColor: theme.hex }}
-          aria-hidden="true"
-        />
-        {theme.pulses && (
-          <span
-            className="animate-status-pulse absolute inset-0 rounded-full"
-            style={{ backgroundColor: theme.hex }}
-            aria-hidden="true"
-          />
-        )}
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-ink-2/88 py-1 pl-2 pr-2 backdrop-blur-md">
+      {/* The pip pops whenever the count changes — a legend that only re-colours
+          is a legend nobody notices going from 0 to 1. */}
+      <StatusPip
+        size="xs"
+        hex={theme.hex}
+        pulses={theme.pulses}
+        glowClass={theme.glowClass}
+        trigger={count}
+      />
+      <span className="font-display text-[11px] leading-none tracking-[0.03em] text-paper/85">
+        {label}
       </span>
-
-      <span className="min-w-0">
-        <span
-          className="block font-mono text-[13px] leading-none tabular-nums"
-          style={{ color: theme.hex }}
-        >
-          {count}
-        </span>
-        <span className="font-display mt-0.5 block truncate text-[11px] leading-none text-muted">
-          {label}
-        </span>
+      <span
+        className="font-mono text-[10px] leading-none tabular-nums"
+        style={{ color: theme.hex }}
+      >
+        {count}
       </span>
-    </div>
+    </span>
   )
 }

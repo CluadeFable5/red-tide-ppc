@@ -114,6 +114,65 @@ export function zoneTheme(status: ZoneStatus): StatusTheme {
   return ZONE_THEME[status] ?? ZONE_THEME.safe
 }
 
+/**
+ * How a zone is painted on the Leaflet map.
+ *
+ * Kept here, next to the theme, so the polygon colour and the badge colour can
+ * never drift apart — Leaflet needs raw numbers and hex, React needs classes,
+ * and these are the only two places either appears.
+ *
+ * THE THREE FILL LEVELS ARE A SEQUENCE, NOT THREE STATES
+ * -----------------------------------------------------
+ * `fill` → `fillHover` → `fillSelected` is deliberately a ramp. A tap on a
+ * polygon fires `mouseover` before `click` (browsers synthesise hover for touch
+ * taps too), so the polygon is already lifting towards `fillHover` in the frames
+ * before the popup opens. Leaflet writes these as SVG presentation attributes;
+ * `.zone-path` in index.css puts a transition on the element, so the change is
+ * interpolated by the compositor rather than cut in. The result is that the
+ * popup arrives *onto a lit polygon* instead of appearing next to a static one.
+ *
+ * Its limitation is honest and worth stating: the popup itself is opened by
+ * Leaflet's own click binding, so this ramps *into* the popup rather than
+ * gating it. Delaying the open would mean un-binding the popup and reopening it
+ * by hand, which risks the zone-click → popup → report-form flow for a
+ * sub-200ms effect. Not worth it.
+ *
+ * `fillOpacity` at rest stays low (0.26): the dark basemap is what makes the
+ * coastlines legible, and a heavy fill hides the thing people came to look at.
+ */
+export interface ZonePaint {
+  /** Outline + fill colour; the same hex the badge uses. */
+  hex: string
+  /** Dashed outline for `unconfirmed` — a second, non-colour signal. */
+  dashArray?: string
+  /** At rest. */
+  fill: number
+  /** Pointer is over the polygon (or the tap is landing). */
+  fillHover: number
+  /** This zone is the current selection. */
+  fillSelected: number
+  weight: number
+  weightSelected: number
+}
+
+const ZONE_PAINT: Record<ZoneStatus, ZonePaint> = {
+  safe: { hex: '#3ddc84', fill: 0.22, fillHover: 0.36, fillSelected: 0.46, weight: 2, weightSelected: 4 },
+  unconfirmed: {
+    hex: '#f0a500',
+    dashArray: '6 5',
+    fill: 0.26,
+    fillHover: 0.4,
+    fillSelected: 0.5,
+    weight: 2,
+    weightSelected: 4,
+  },
+  advisory: { hex: '#ff5252', fill: 0.3, fillHover: 0.44, fillSelected: 0.56, weight: 2, weightSelected: 4 },
+}
+
+export function zonePaint(status: ZoneStatus): ZonePaint {
+  return ZONE_PAINT[status] ?? ZONE_PAINT.safe
+}
+
 export function reportTheme(status: ReportStatus): StatusTheme {
   return REPORT_THEME[status] ?? REPORT_THEME.pending
 }

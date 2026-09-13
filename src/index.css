@@ -151,6 +151,44 @@ body {
   }
 }
 
+/* Ambient tide motif.
+   ---------------------------------------------------------------------
+   A slow sweep down the map surface, and a drift for the advisory-signal
+   trace. Both are transform/opacity only, so they run on the compositor and
+   never touch layout — this animates continuously behind a live Leaflet
+   instance, and anything that caused a reflow there would be visible as map
+   jitter.
+
+   The sweep is deliberately slow (14s) and low-contrast: it should register
+   as the surface being *alive*, not as an animation demanding attention. */
+@keyframes tide-scan {
+  0% {
+    transform: translate3d(0, -30%, 0);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.5;
+  }
+  85% {
+    opacity: 0.32;
+  }
+  100% {
+    transform: translate3d(0, 520%, 0);
+    opacity: 0;
+  }
+}
+
+/* One tile width (120 user units in the gauge's viewBox), so the loop is
+   seamless where the two wave copies meet. */
+@keyframes tide-drift {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-120px);
+  }
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -193,6 +231,41 @@ body {
   animation-delay: calc(var(--stagger, 0) * 55ms);
 }
 
+/* --- Ambient tide motif ---------------------------------------------- */
+
+.animate-tide-scan {
+  animation: tide-scan 14s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  /* The band itself: a soft core line with the light bleeding off it, in
+     accent amber. It reads as a sonar sweep over dark tiles rather than a
+     bright bar, which is why the core is only ~8% alpha. */
+  background-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--color-accent) 7%, transparent) 42%,
+    color-mix(in srgb, var(--color-accent) 16%, transparent) 50%,
+    color-mix(in srgb, var(--color-accent) 7%, transparent) 58%,
+    transparent 100%
+  );
+  will-change: transform, opacity;
+}
+
+.animate-tide-drift {
+  animation: tide-drift 9s linear infinite;
+}
+
+/* --- Zone sheet ------------------------------------------------------- */
+
+/* Registration ticks along the sheet's top edge. Exposed measuring logic
+   rather than a decorative border: fixed pitch, one hairline each, the way a
+   ruler is printed. */
+.sheet-ticks {
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--color-line) 0 1px,
+    transparent 1px 13px
+  );
+}
+
 /* ---------------------------------------------------------------------------
    Leaflet. Loaded after Tailwind so our chrome wins over Leaflet's defaults.
    --------------------------------------------------------------------------- */
@@ -216,6 +289,23 @@ body {
 .leaflet-tile-pane {
   filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.92)
     saturate(0.7);
+}
+
+/* Zone polygons.
+   ---------------------------------------------------------------------
+   Leaflet writes `fill-opacity`, `stroke-width` etc. as SVG *presentation
+   attributes*, and a CSS transition on the element interpolates those changes
+   like any other computed-value change. That is what turns a tap into a ramp:
+   hover (synthesised ahead of click on touch) lifts the fill, the click lands
+   on an already-lit polygon, and the popup opens onto it.
+
+   If a browser ever declines to interpolate an attribute change, the value
+   still applies instantly — the degradation is "as before", never broken. */
+.leaflet-overlay-pane path.zone-path {
+  transition:
+    fill-opacity 200ms var(--ease-out-quint),
+    stroke-width 200ms var(--ease-out-quint),
+    stroke-opacity 200ms var(--ease-out-quint);
 }
 
 /* Zoom control, restyled to match the sheets. */
@@ -422,5 +512,14 @@ body {
     animation: none;
     opacity: 0.5;
     transform: none;
+  }
+
+  /* The sweep is pure ambience — the global rule above would freeze it at its
+     final frame (invisible mid-flight), which reads as a stuck artefact. Hide
+     it outright instead. */
+  .animate-tide-scan,
+  .animate-tide-drift {
+    animation: none;
+    opacity: 0;
   }
 }

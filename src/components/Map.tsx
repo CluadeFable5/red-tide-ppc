@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, Polygon, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet'
 import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, zonesBoundingBox } from '../data/zones'
-import { zoneStatusMeta } from '../lib/status'
+import { zonePaint } from '../styles/statusTheme'
 // `LatLng` here is our own [lat, lng] tuple, which Leaflet accepts directly.
 import type { LatLng, Zone } from '../types'
 import { ZonePopup } from './ZonePopup'
@@ -68,6 +68,24 @@ function FocusZone({ zone, token }: { zone: Zone | null; token: number }) {
 /**
  * The public map: one Leaflet polygon per zone, coloured by status, with a
  * popup that carries the "Report something here" call to action.
+ *
+ * THE BASE LAYER
+ * --------------
+ * This component is the map page's persistent base layer: it is mounted once,
+ * behind the sheet, and never unmounts as the sheet moves. Leaflet measures its
+ * container on mount and positions every pane with transforms, so the only thing
+ * allowed to transform it is the *underlay wrapper* in MapPage — and that wrapper
+ * deliberately starts at `scale(1)` at the peek anchor, so the initial
+ * measurement happens on an untransformed box. Leaflet 1.9's `getScale()` reads
+ * `getBoundingClientRect()` against `offsetWidth`, so a scaled container still
+ * maps pointer coordinates correctly once it does recede.
+ *
+ * ATTRIBUTION
+ * -----------
+ * `attributionControl={false}`: the control is pinned to the bottom-right of the
+ * map, which is underneath the sheet at every anchor. OSM attribution is a
+ * licence requirement, so it lives in the sheet's always-visible peek row
+ * instead — see the footer in ZoneSheet.tsx.
  */
 export function Map({
   zones,
@@ -88,6 +106,11 @@ export function Map({
     [zones, focusZoneId],
   )
 
+  // Hover drives the polygon's fill up a step *before* the click opens the
+  // popup, so the popup lands on a lit polygon. Leaflet synthesises `mouseover`
+  // ahead of `click` on touch too, which is what makes this work on a phone.
+  const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null)
+
   return (
     <MapContainer
       center={MAP_CENTER}
@@ -98,6 +121,7 @@ export function Map({
       // index.css): the header overlay occupies the top of the screen, and
       // pinch-zoom is the expected gesture on a touch device anyway.
       zoomControl={false}
+      attributionControl={false}
       className="h-full w-full"
     >
       <ZoomControl position="topright" />
@@ -110,23 +134,36 @@ export function Map({
       <FocusZone zone={focusZone} token={focusToken} />
 
       {zones.map((zone) => {
-        const meta = zoneStatusMeta(zone.status)
+        const paint = zonePaint(zone.status)
         const isSelected = zone.id === selectedZoneId
+        const isHovered = zone.id === hoveredZoneId
 
         return (
           <Polygon
             key={zone.id}
             positions={zone.polygon}
             pathOptions={{
-              color: meta.hex,
-              fillColor: meta.hex,
-              weight: isSelected ? 4 : 2,
+              color: paint.hex,
+              fillColor: paint.hex,
+              weight: isSelected ? paint.weightSelected : paint.weight,
               opacity: 0.95,
-              fillOpacity: isSelected ? 0.5 : 0.28,
-              dashArray: zone.status === 'unconfirmed' ? '6 5' : undefined,
+              // The ramp itself. Leaflet writes these as attributes and the
+              // transition on `.zone-path` does the interpolating — see
+              // `zonePaint` in styles/statusTheme.ts for why it is a sequence.
+              fillOpacity: isSelected
+                ? paint.fillSelected
+                : isHovered
+                  ? paint.fillHover
+                  : paint.fill,
+              dashArray: paint.dashArray,
+              // Hooks for the CSS transition, and a stable class for tests.
+              className: 'zone-path',
             }}
             eventHandlers={{
               click: () => onSelectZone(zone.id),
+              mouseover: () => setHoveredZoneId(zone.id),
+              mouseout: () =>
+                setHoveredZoneId((current) => (current === zone.id ? null : current)),
             }}
           >
             <Popup
