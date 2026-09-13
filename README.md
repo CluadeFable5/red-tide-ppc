@@ -275,9 +275,16 @@ Notes:
 
 ## 10. Zone boundaries are approximate
 
-The polygons in `src/data/zones.ts` are **hand-drawn approximations**, anchored on a handful of verified reference points (Puerto Princesa city centre, the port, Cowrie and Luli islands, Bacungan, Sabang). They exist to say "this is your bay" on a phone screen — **they are not survey boundaries and not official BFAR fisheries areas.**
+The polygons in `src/data/zones.ts` are **hand-drawn approximations**. They are placed over real water and anchored on verified OpenStreetMap reference points — the Bancao-Bancao lighthouse, the Santa Lourdes wharf, Cowrie/Cañon/Luli and the other Honda Bay islands, Sabang village and Saint Paul Rock — and every vertex sits at least ~1 km clear of the mapped shoreline. They exist to say "this is your bay" on a phone screen — **they are not survey boundaries and not official BFAR fisheries areas.**
+
+Two caveats worth knowing:
+
+- The outlines are simplified to 6–8 vertices each, so a zone edge can cut across a mangrove islet or a small headland. They mark an area, not a boundary line.
+- `binuatan` is a legacy id: there is no coastal place called Binuatan (the only Binuatan in the Philippines is a weaving centre in Barangay Santa Monica, inside the city). That polygon covers the real northeast-coast water off the Marayugon and Babuyan barangays.
 
 Before this is used for real public-health decisions, replace them with the actual boundaries from BFAR or the Puerto Princesa City LGU.
+
+**If you edit the polygons:** zones are seeded into Firestore, so an existing project keeps the old coordinates until you re-seed — `npm run seed -- --force`.
 
 ---
 
