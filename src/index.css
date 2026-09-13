@@ -229,6 +229,23 @@ body {
   color: var(--color-faint);
 }
 
+/* Zoom buttons sit top-right and are hidden on phones: the header overlay owns
+   the top of the screen, and pinch-zoom is the expected gesture on touch. */
+.leaflet-control-zoom {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .leaflet-control-zoom {
+    display: block;
+  }
+
+  /* Clear the overlay chrome. */
+  .leaflet-top.leaflet-right {
+    margin-top: 74px;
+  }
+}
+
 .leaflet-control-attribution {
   background: color-mix(in srgb, var(--color-ink) 78%, transparent) !important;
   color: var(--color-faint) !important;
