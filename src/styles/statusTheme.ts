@@ -21,6 +21,13 @@ import type { ReportStatus, ZoneStatus } from '../types'
  * place to change how status *looks*. If the two ever need to converge, fold
  * these tokens back into `status.ts`.
  *
+ * ⚠️ As of the design pass, `StatusMeta.badgeClass` and `StatusMeta.softClass`
+ * in `src/lib/status.ts` have NO consumers — every component now reads from
+ * this file instead. They were left in place rather than deleted because that
+ * module is owned by the build agent. They are dead, and they are light-theme:
+ * reusing `softClass` would put a `bg-green-50` pill on a #080808 ground. Safe
+ * to delete whenever `status.ts` is next touched.
+ *
  * COLOUR IS NEVER THE ONLY SIGNAL
  * -------------------------------
  * Roughly 8% of men have red/green colour vision deficiency, and this app is

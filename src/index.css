@@ -52,14 +52,6 @@
     "Liberation Mono", monospace;
 }
 
-/* Legacy alias. The pre-design-pass components referenced `ocean`; it now maps
-   to a raised dark surface so any not-yet-restyled markup stays coherent
-   instead of flashing navy. Remove once nothing references it. */
-@theme {
-  --color-ocean: #1c1c1c;
-  --color-ocean-soft: #2a2a2a;
-}
-
 /* ---------------------------------------------------------------------------
    Motion tokens. One place to tune feel; `motion` and CSS both read these.
    --------------------------------------------------------------------------- */
