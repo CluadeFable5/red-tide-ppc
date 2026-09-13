@@ -222,7 +222,17 @@ src/
     ReportForm.tsx        # report modal / bottom sheet
     ReportCard.tsx        # one report in the admin queue
     AdminGate.tsx         # passcode screen
+    ZoneSheet.tsx         # three-anchor bottom sheet: advisories + zone list
+    StatusPip.tsx         # the status dot (pops on status change)
+    Ambient.tsx           # advisory-signal gauge + map scanline (schematic)
     Header.tsx  Legend.tsx  StatusBadge.tsx  Notice.tsx  DemoBanner.tsx
+  motion/
+    RouteTransition.tsx   # map <-> admin cross-fade
+    sheetAnchors.ts       # peek/mid/full maths + snap + underlay (pure, tested)
+    readouts.ts           # data-derived sheet copy + gauge wave (pure, tested)
+    useZoneSheet.ts       # sheet position/anchors + underlay motion values
+  styles/
+    statusTheme.ts        # status -> dark-theme colours, classes, map paint
   pages/
     MapPage.tsx           # public view
     Admin.tsx             # /admin review dashboard
