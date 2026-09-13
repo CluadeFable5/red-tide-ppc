@@ -25,6 +25,7 @@
     "vitest.config.ts",
     "scripts",
     "src/types.ts",
-    "src/data/zones.ts"
+    "src/data/zones.ts",
+    "src/lib/firestoreMapping.ts"
   ]
 }

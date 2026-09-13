@@ -160,6 +160,8 @@ npm run seed -- --force  # overwrite existing zones (resets status to "safe")
 
 The seed script reads the same `.env` as the app and writes the six zones defined in `src/data/zones.ts` into the `zones` collection with `lastUpdated = serverTimestamp()`.
 
+Polygons are stored as arrays of `{lat, lng}` objects: Firestore rejects nested arrays, so the `[lat, lng]` tuples the app uses are converted on the way in (`toFirestorePolygon`) and back to tuples on the way out (`normalizePolygon`). `seed:dry-run` also validates every payload shape before touching the network.
+
 ### 4.5 Verify
 
 Reload the app. The amber **demo mode** banner should be gone, and a report submitted in one browser should appear in the admin queue of another.
@@ -239,7 +241,7 @@ src/
 | `id` | string | e.g. `honda-inner` |
 | `name` | string | shown on the map |
 | `description` | string | one-line plain-English description |
-| `polygon` | array | approximate `[lat, lng]` pairs |
+| `polygon` | array | array of `{lat, lng}` objects (the app converts to/from `[lat, lng]` tuples; Firestore forbids nested arrays) |
 | `status` | string | `safe` \| `unconfirmed` \| `advisory` |
 | `lastUpdated` | timestamp | set with `serverTimestamp()` |
 

@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
+  containsNestedArrays,
   mapReport,
   mapZone,
   normalizePolygon,
   normalizeReportStatus,
   normalizeZoneStatus,
   safeFileName,
+  toFirestorePolygon,
   toMillis,
 } from './firestoreMapping'
 
@@ -108,6 +110,89 @@ describe('normalizePolygon', () => {
     expect(normalizePolygon(undefined)).toEqual([])
     expect(normalizePolygon('9.7,118.7')).toEqual([])
     expect(normalizePolygon({ latitude: 9.7 })).toEqual([])
+  })
+})
+
+describe('toFirestorePolygon', () => {
+  const tuples: [number, number][] = [
+    [9.748, 118.69],
+    [9.742, 118.722],
+    [9.72, 118.732],
+  ]
+
+  it('turns tuples into {lat, lng} objects — Firestore rejects nested arrays', () => {
+    expect(toFirestorePolygon(tuples)).toEqual([
+      { lat: 9.748, lng: 118.69 },
+      { lat: 9.742, lng: 118.722 },
+      { lat: 9.72, lng: 118.732 },
+    ])
+  })
+
+  it('handles the empty polygon', () => {
+    expect(toFirestorePolygon([])).toEqual([])
+  })
+
+  it('round-trips: write with toFirestorePolygon, read with normalizePolygon', () => {
+    // This pair is the seed ↔ map contract. The stored form must contain no
+    // nested arrays, and the read form must be Leaflet-ready tuples again.
+    const stored = toFirestorePolygon(tuples)
+    expect(containsNestedArrays(stored)).toBe(false)
+    expect(normalizePolygon(stored)).toEqual(tuples)
+  })
+})
+
+describe('containsNestedArrays', () => {
+  it('flags the exact pre-fix seed shape: tuples inside an array', () => {
+    expect(containsNestedArrays([[9.7, 118.7]])).toBe(true)
+    expect(containsNestedArrays([[9.7, 118.7], [9.8, 118.8]])).toBe(true)
+  })
+
+  it('passes primitives and flat arrays of primitives', () => {
+    expect(containsNestedArrays(null)).toBe(false)
+    expect(containsNestedArrays(5)).toBe(false)
+    expect(containsNestedArrays('9.7,118.7')).toBe(false)
+    expect(containsNestedArrays(['a', 1, true, null])).toBe(false)
+  })
+
+  it('arrays of plain objects are fine, arrays of arrays inside them are not', () => {
+    expect(containsNestedArrays([{ lat: 9.7, lng: 118.7 }])).toBe(false)
+    expect(containsNestedArrays({ polygon: [{ tags: ['a', 'b'] }] })).toBe(false)
+    expect(containsNestedArrays({ polygon: [{ tags: [[1, 2]] }] })).toBe(true)
+  })
+
+  it('passes object values like Date/timestamp sentinels', () => {
+    expect(containsNestedArrays({ lastUpdated: new Date() })).toBe(false)
+  })
+})
+
+describe('zone document: seed write shape → mapZone read (regression for the seeding bug)', () => {
+  it('a polygon written the way seed.ts now writes maps back to tuples', () => {
+    const seedPolygon: [number, number][] = [
+      [9.748, 118.69],
+      [9.742, 118.722],
+      [9.72, 118.732],
+      [9.694, 118.722],
+    ]
+
+    // Exactly the document scripts/seed.ts produces: {lat, lng} objects and
+    // a null serverTimestamp() on the first read.
+    const document: Record<string, unknown> = {
+      id: 'pp-bay',
+      name: 'Puerto Princesa Bay (City Proper)',
+      description: 'The city bay southwest of the poblacion.',
+      polygon: toFirestorePolygon(seedPolygon),
+      status: 'safe',
+      lastUpdated: null,
+    }
+
+    const zone = mapZone('pp-bay', document)
+
+    expect(zone.polygon).toEqual(seedPolygon)
+    for (const point of zone.polygon) {
+      expect(Array.isArray(point)).toBe(true) // Leaflet wants tuples
+      expect(point).toHaveLength(2)
+    }
+    expect(containsNestedArrays(document)).toBe(false)
   })
 })
 

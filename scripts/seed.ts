@@ -7,6 +7,12 @@
  *
  * Run this once per environment, after you have created your Firestore database
  * and deployed `firestore.rules`.
+ *
+ * Zone polygons live in `src/data/zones.ts` as `[lat, lng]` tuples for Leaflet.
+ * Firestore forbids nested arrays, so each vertex is serialized to a
+ * `{lat, lng}` object before writing (`toFirestorePolygon`) and every payload
+ * is pre-flighted for nested arrays — `--dry-run` checks shapes without
+ * writing anything.
  */
 
 import { initializeApp, type FirebaseOptions } from 'firebase/app'
@@ -18,6 +24,10 @@ import {
   setDoc,
 } from 'firebase/firestore'
 import { SEED_ZONES } from '../src/data/zones'
+import {
+  containsNestedArrays,
+  toFirestorePolygon,
+} from '../src/lib/firestoreMapping'
 
 const ZONES_COLLECTION = 'zones'
 
@@ -72,23 +82,34 @@ async function main(): Promise<void> {
   let skipped = 0
 
   for (const zone of SEED_ZONES) {
-    const reference = doc(db, ZONES_COLLECTION, zone.id)
-    const existing = await getDoc(reference)
-
     const payload = {
       id: zone.id,
       name: zone.name,
       description: zone.description,
-      polygon: zone.polygon,
+      // Tuples ([lat, lng]) are nested arrays, which Firestore rejects;
+      // store objects instead. normalizePolygon() reads them back as tuples.
+      polygon: toFirestorePolygon(zone.polygon),
       status: zone.status,
       lastUpdated: serverTimestamp(),
     }
 
+    if (containsNestedArrays(payload)) {
+      throw new Error(
+        `Refusing to write zones/${zone.id}: the payload contains an array ` +
+          'nested inside another array, which Firestore rejects. Serialize ' +
+          'the offending field before writing (see toFirestorePolygon).',
+      )
+    }
+
     if (dryRun) {
-      console.log(`[dry-run] would write  ${zone.id} — ${zone.name}`)
+      console.log(`[dry-run] would write  ${zone.id} — ${zone.name} (shape OK: ${zone.polygon.length} vertices)`)
       created += 1
       continue
     }
+
+    // Read-after-check: a dry run never touches the network.
+    const reference = doc(db, ZONES_COLLECTION, zone.id)
+    const existing = await getDoc(reference)
 
     if (existing.exists() && !force) {
       console.log(`[skip]     ${zone.id} — ${zone.name} (already exists)`)
