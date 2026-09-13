@@ -7,122 +7,26 @@ import {
   updateDoc,
 } from 'firebase/firestore'
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage'
-import type {
-  LatLng,
-  NewReport,
-  Report,
-  ReportStatus,
-  Zone,
-  ZoneStatus,
-} from '../types'
+import type { NewReport, Report, ReportStatus, ZoneStatus } from '../types'
 import type { Backend } from './backend'
 import { firestore, storage } from './firebase'
+import {
+  mapReport,
+  mapZone,
+  safeFileName,
+} from './firestoreMapping'
 
 /**
  * Production backend: Cloud Firestore for zones/reports, Cloud Storage for
  * report photos. No Firebase Auth — see `firestore.rules` for what that costs.
+ *
+ * Document → domain mapping lives in `./firestoreMapping`, which is pure and
+ * unit-tested; this file is only the Firestore/Storage plumbing.
  */
 
 const ZONES_COLLECTION = 'zones'
 const REPORTS_COLLECTION = 'reports'
 const PHOTO_FOLDER = 'reports'
-
-const ZONE_STATUSES: readonly ZoneStatus[] = ['safe', 'unconfirmed', 'advisory']
-const REPORT_STATUSES: readonly ReportStatus[] = [
-  'pending',
-  'confirmed',
-  'rejected',
-]
-
-function normalizeZoneStatus(value: unknown): ZoneStatus {
-  return ZONE_STATUSES.includes(value as ZoneStatus)
-    ? (value as ZoneStatus)
-    : 'safe'
-}
-
-function normalizeReportStatus(value: unknown): ReportStatus {
-  return REPORT_STATUSES.includes(value as ReportStatus)
-    ? (value as ReportStatus)
-    : 'pending'
-}
-
-/** Firestore Timestamp, GeoPoint, ISO string or plain number → epoch ms. */
-function toMillis(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string') {
-    const parsed = Date.parse(value)
-    if (!Number.isNaN(parsed)) return parsed
-  }
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>
-    if (typeof record.toMillis === 'function') {
-      return (record.toMillis as () => number)()
-    }
-    if (typeof record.seconds === 'number') return record.seconds * 1000
-  }
-  // A locally-pending serverTimestamp() has not resolved yet.
-  return Date.now()
-}
-
-/** Accepts [[lat, lng], ...] or [{latitude, longitude}, ...] (GeoPoint). */
-function normalizePolygon(value: unknown): LatLng[] {
-  if (!Array.isArray(value)) return []
-  const points: LatLng[] = []
-  for (const item of value) {
-    if (Array.isArray(item) && item.length >= 2) {
-      const lat = Number(item[0])
-      const lng = Number(item[1])
-      if (Number.isFinite(lat) && Number.isFinite(lng)) points.push([lat, lng])
-      continue
-    }
-    if (item && typeof item === 'object') {
-      const record = item as Record<string, unknown>
-      const lat = Number(record.latitude ?? record.lat)
-      const lng = Number(record.longitude ?? record.lng)
-      if (Number.isFinite(lat) && Number.isFinite(lng)) points.push([lat, lng])
-    }
-  }
-  return points
-}
-
-function mapZone(id: string, data: Record<string, unknown>): Zone {
-  return {
-    id,
-    name: typeof data.name === 'string' ? data.name : 'Unnamed zone',
-    description: typeof data.description === 'string' ? data.description : '',
-    polygon: normalizePolygon(data.polygon),
-    status: normalizeZoneStatus(data.status),
-    lastUpdated: toMillis(data.lastUpdated),
-  }
-}
-
-function mapReport(id: string, data: Record<string, unknown>): Report {
-  return {
-    id,
-    zoneId: typeof data.zoneId === 'string' ? data.zoneId : '',
-    description: typeof data.description === 'string' ? data.description : '',
-    photoUrl:
-      typeof data.photoUrl === 'string' && data.photoUrl.length > 0
-        ? data.photoUrl
-        : null,
-    submittedAt: toMillis(data.submittedAt),
-    status: normalizeReportStatus(data.status),
-  }
-}
-
-/** `my photo (1).jpg` → `my-photo-1.jpg`; keeps the object path boring. */
-function safeFileName(name: string): string {
-  const base = name
-    .replace(/\\/g, '/')
-    .split('/')
-    .pop() ?? 'photo.jpg'
-  const cleaned = base
-    .normalize('NFKD')
-    .replace(/[^a-zA-Z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(-80)
-  return cleaned.length > 0 ? cleaned : 'photo.jpg'
-}
 
 export function createFirebaseBackend(): Backend {
   return {
