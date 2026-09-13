@@ -177,6 +177,21 @@ body {
   animation: rise-in var(--dur-slow) var(--ease-out-quint) both;
 }
 
+/* Indeterminate sweep — used on the submit button while a report is uploading,
+   where an endless spinner alone gives no sense of progress. */
+.animate-sheen {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    currentColor 45%,
+    currentColor 55%,
+    transparent 100%
+  );
+  background-size: 45% 100%;
+  background-repeat: no-repeat;
+  animation: sheen 1.1s linear infinite;
+}
+
 .animate-fade-in {
   animation: fade-in var(--dur-base) var(--ease-out-quint) both;
 }

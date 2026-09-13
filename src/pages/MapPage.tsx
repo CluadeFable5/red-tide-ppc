@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { DemoBanner } from '../components/DemoBanner'
 import { Header } from '../components/Header'
@@ -10,7 +10,7 @@ import { ZoneStatusBadge } from '../components/StatusBadge'
 import { ZONE_STATUS_ORDER } from '../lib/status'
 import { selectPendingCountByZone, selectZoneById, useAppStore } from '../store'
 import { zoneTheme } from '../styles/statusTheme'
-import type { ZoneStatus } from '../types'
+import type { Zone, ZoneStatus } from '../types'
 
 /**
  * The public view.
@@ -55,6 +55,20 @@ export function MapPage() {
 
   const reportZone = selectZoneById(zones, reportZoneId)
   const advisoryCount = statusCounts.advisory
+
+  // Presentation latch.
+  //
+  // `submitReport` clears `reportZoneId` the instant the write succeeds, which
+  // would unmount the sheet before it could show its success state or play its
+  // exit animation. Holding the zone object here keeps the sheet mounted and
+  // hands `ReportForm` an `open` flag to animate against instead.
+  //
+  // This changes nothing about the data flow: the store still decides when the
+  // form is open, and `open` is derived straight from it.
+  const [heldZone, setHeldZone] = useState<Zone | null>(null)
+  useEffect(() => {
+    if (reportZone) setHeldZone(reportZone)
+  }, [reportZone])
 
   function focusZone(zoneId: string) {
     selectZone(zoneId)
@@ -304,7 +318,15 @@ export function MapPage() {
         </footer>
       </main>
 
-      {reportZone && <ReportForm zone={reportZone} onClose={closeReportForm} />}
+      {heldZone && (
+        <ReportForm
+          key={heldZone.id}
+          zone={heldZone}
+          open={Boolean(reportZone)}
+          onClose={closeReportForm}
+          onDismissed={() => setHeldZone(null)}
+        />
+      )}
 
       <Notice />
     </div>
