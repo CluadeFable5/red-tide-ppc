@@ -387,11 +387,43 @@ sheet — floating UI should either be fully over the map or not on screen.
   bottom-right, which is underneath the sheet at every anchor, and attribution is a licence
   requirement. It now sits in the sheet's always-visible row, with the rest of the caveats.
 
-### 13.7 Not verified here
+### 13.7 What the browser pass changed
 
-There is no browser in the build sandbox, so this pass could not be screenshot-verified. The
-structure and the interaction *state machine* were verified in jsdom (anchor cycling, the sheet's
-`translateY`, and the underlay's live `scale`/`border-radius` tracking the same progress value), and
-the Leaflet interaction math rests on `getScale()` reading `getBoundingClientRect()` against
-`offsetWidth` — which is why scaling the wrapper is safe on Leaflet 1.9. Visual verification at
-~375px is still the outstanding check.
+The pass ran in real Chromium (375×667 touch emulation, 1280×800, 390×844) with tiles and webfonts
+served locally. Four things it caught that reasoning had not:
+
+- **Half-cut headline at the peek edge.** At `translateY(660)` the sheet's top edge sliced the
+  "No advisories recorded right now" heading mid-line, which reads as a broken crop rather than as
+  content continuing below. The body is now driven by the *same* progress value as the underlay
+  (`useTransform(progress, [0, 0.12], [0, 1])`) and is fully transparent at peek — content stays in
+  the DOM, so screen readers still get it, but nothing is visibly clipped.
+- **The mid anchor showed nothing readable.** Cards could not fit twice in a ~300px sheet, so the
+  briefed "advisory headline + a couple of zones" was not true at mid: one card and no headline. Mid
+  is now a *scan* stop (headline + one-line zone rows with status, pending count and a report
+  action — two rows fully visible at 375px) and full is the *read* stop (description, polygon size,
+  timestamps). Exactly one copy of every string is rendered, chosen by the anchor.
+- **The press ramp did not exist on touch.** Leaflet's container binds mouse events only, so a tap
+  reaches the layer as a mouseover/mousedown/click burst at `touchend` — measured here as touchdown
+  at t≈18ms and the first layer event at t≈131ms, with the popup opening at t≈125–146ms. The ramp
+  therefore played *underneath* the popup, which is precisely the "instant cut" the design was
+  supposed to avoid. `ZonePressFeedback` now lights the polygon from the native `pointerdown`
+  (capture-phase, delegated, released on pointerup/cancel or after 10px of travel so a pan does not
+  leave a zone lit). Measured after the fix: the fill is at 0.42 of the 0.22 → 0.44 ramp while the
+  finger is still down, with 8 interpolated values before the popup paints.
+- **Keyboard users were locked out of the handle.** The drag-tail guard swallowed *every* click
+  after a drag, including `Enter` on the focused button. It is now `isDragTail(didDrag, detail)` —
+  pointer clicks (`detail !== 0`) are still suppressed, keyboard/AT activation is not.
+
+Also confirmed rather than assumed: `:active` is not usable for the press cue (Chrome withholds it
+until the tap is recognised, i.e. until `touchend` — the same 113ms that was missing), the map keeps
+its 1280×800 layout box while the wrapper scales to 0.96 (so Leaflet never re-measures), a polygon's
+`isPointInFill` point still resolves to its own `<path>` while scaled, and a 180px flick commits one
+anchor with the spring arriving in ~350ms and no overshoot in either direction.
+
+### 13.8 Not verified here
+
+Cross-browser only. Everything above is Chromium (153, headless shell, touch emulation); Safari's
+`touchend`-relative ordering of the synthesised mouse burst and its `:active` timing are untested, so
+the press cue's *lead time* on iOS is an assumption even though the mechanism (native `pointerdown`)
+is not. Real-device inertia on the sheet's spring, and screen-reader announcement of the anchor
+change, are also untouched by this pass.
