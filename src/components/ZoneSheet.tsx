@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import { motion, useReducedMotion, useTransform } from 'motion/react'
 import { formatRelative } from '../lib/format'
 import { ZONE_STATUS_ORDER } from '../lib/status'
 import {
@@ -9,6 +9,7 @@ import {
   zoneSummaryLine,
   zoneTag,
 } from '../motion/readouts'
+import { isDragTail } from '../motion/sheetAnchors'
 import type { ZoneSheetController } from '../motion/useZoneSheet'
 import { zoneTheme } from '../styles/statusTheme'
 import type { Zone, ZoneStatus } from '../types'
@@ -65,6 +66,20 @@ export function ZoneSheet({
   const dominant = dominantZoneStatus(counts)
   const dominantTheme = zoneTheme(dominant)
   const action = ANCHOR_ACTION_LABEL[sheet.anchor]
+
+  // Mid is the *scan* stop: the advisory headline and compact zone rows, so a
+  // couple of zones are readable at 45% of a 667px phone. Full is the *read*
+  // stop, where the same zones expand into cards with descriptions and actions.
+  // Rendering one or the other (rather than hiding one with CSS) keeps exactly
+  // one copy of every string in the DOM.
+  const compact = sheet.anchor === 'mid'
+
+  // The sheet body is invisible at peek and fades in over the first tenth of the
+  // travel. Driven by the same progress value as the map underlay, so it is
+  // continuous through a drag and costs no re-render: the old stacked layout
+  // sliced a headline in half at the peek edge, which read as a broken crop
+  // rather than as content continuing below.
+  const bodyOpacity = useTransform(sheet.progress, [0, 0.12], [0, 1])
 
   // The zone cards stagger in the first time the sheet is actually opened.
   // Bumping the list `key` replays the stagger; it is done once, because a list
@@ -170,11 +185,12 @@ export function ZoneSheet({
 
           <button
             type="button"
-            // A drag that happens to end with a click on the handle must not
-            // also advance the anchor — otherwise grabbing the handle and
-            // putting the sheet back where it started would still move it.
-            onClick={() => {
-              if (sheet.didDrag()) return
+            // A drag that ends with a click on the handle must not advance the
+            // anchor as well, or grabbing the handle and putting the sheet back
+            // would still move it. Keyboard/AT activation is exempt — see
+            // `isDragTail`.
+            onClick={(event) => {
+              if (isDragTail(sheet.didDrag(), event.detail)) return
               sheet.cycle()
             }}
             aria-label={action}
@@ -206,8 +222,13 @@ export function ZoneSheet({
       </div>
 
       {/* --- Scrollable body -------------------------------------------- */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 sm:px-4">
-        <AdvisoryBanner advisoryCount={advisoryCount} />
+      <motion.div
+        style={{ opacity: bodyOpacity }}
+        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 sm:px-4 ${
+          sheet.anchor === 'peek' ? 'pointer-events-none' : ''
+        }`}
+      >
+        <AdvisoryBanner advisoryCount={advisoryCount} compact={compact} />
 
         <div className="mt-4 flex items-baseline justify-between gap-2">
           <h2 className="font-mono text-[10px] uppercase tracking-[0.18em] text-faint">
@@ -232,6 +253,32 @@ export function ZoneSheet({
               const pending = pendingCounts[zone.id] ?? 0
               const isSelected = zone.id === selectedZoneId
               const theme = zoneTheme(zone.status)
+
+              if (compact) {
+                return (
+                  <motion.li
+                    key={zone.id}
+                    variants={cardVariants}
+                    className={`overflow-hidden rounded-lg border bg-ink ${
+                      isSelected
+                        ? 'border-accent/50 ring-1 ring-accent/20'
+                        : 'border-line'
+                    }`}
+                  >
+                    <CompactZoneRow
+                      zone={zone}
+                      pending={pending}
+                      onFocus={() => onFocusZone(zone.id)}
+                      onReport={() => onReport(zone.id)}
+                    />
+                    <span
+                      className="block h-0.5 w-full opacity-70"
+                      style={{ backgroundColor: theme.hex }}
+                      aria-hidden="true"
+                    />
+                  </motion.li>
+                )
+              }
 
               return (
                 <motion.li
@@ -323,7 +370,7 @@ export function ZoneSheet({
             © OpenStreetMap
           </a>
         </footer>
-      </div>
+      </motion.div>
     </motion.div>
   )
 }
@@ -337,7 +384,14 @@ export function ZoneSheet({
  * more annoying than the one extra gesture, and the peek line already carries
  * the count in the advisory colour.
  */
-function AdvisoryBanner({ advisoryCount }: { advisoryCount: number }) {
+function AdvisoryBanner({
+  advisoryCount,
+  compact = false,
+}: {
+  advisoryCount: number
+  /** Mid anchor: headline only. Full guidance is one gesture away at full. */
+  compact?: boolean
+}) {
   if (advisoryCount > 0) {
     return (
       <div className="relative overflow-hidden rounded-lg border border-advisory/30 bg-advisory/8 p-3 pl-4">
@@ -345,11 +399,13 @@ function AdvisoryBanner({ advisoryCount }: { advisoryCount: number }) {
         <h2 className="font-display text-lg leading-none text-advisory">
           {advisoryCount} {advisoryCount === 1 ? 'zone is' : 'zones are'} under advisory
         </h2>
+        {!compact && (
         <p className="mt-2 text-xs leading-relaxed text-paper/70">
           Do not gather, sell or eat shellfish or <em>alamang</em> from a zone marked{' '}
           <strong className="text-advisory">Advisory</strong>. Fish, squid, shrimp and
           crab are still safe if they are fresh, cleaned and washed before cooking.
         </p>
+        )}
       </div>
     )
   }
@@ -360,10 +416,74 @@ function AdvisoryBanner({ advisoryCount }: { advisoryCount: number }) {
       <h2 className="font-display text-lg leading-none text-safe">
         No advisories recorded right now
       </h2>
-      <p className="mt-2 text-xs leading-relaxed text-paper/70">
-        Nothing is currently flagged. Tap a zone on the map and report what you see —
-        water colour, dead shellfish, or anyone feeling numb after eating seafood.
-      </p>
+      {!compact && (
+        <p className="mt-2 text-xs leading-relaxed text-paper/70">
+          Nothing is currently flagged. Tap a zone on the map and report what you see —
+          water colour, dead shellfish, or anyone feeling numb after eating seafood.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * One zone as a single dense row — the mid anchor's unit of information.
+ *
+ * Deliberately a row and not a shrunken card: at 45% of a 667px screen the sheet
+ * is ~300px, and the briefed content for that stop is the advisory headline plus
+ * two or three zones. Cards cannot fit twice in that height, and shrinking them
+ * until they do would produce the worst of both. So mid scans (name, status,
+ * pending, report action) and full reads (description, polygon size, timestamps).
+ */
+function CompactZoneRow({
+  zone,
+  pending,
+  onFocus,
+  onReport,
+}: {
+  zone: Zone
+  pending: number
+  onFocus: () => void
+  onReport: () => void
+}) {
+  return (
+    <div className="flex items-center gap-2 py-1.5 pl-3 pr-2">
+      <button
+        type="button"
+        onClick={onFocus}
+        className="flex min-w-0 flex-1 items-center gap-2 py-1 text-left"
+      >
+        <span className="font-display truncate text-base leading-none text-paper">
+          {zone.name}
+        </span>
+        {pending > 0 && (
+          <span className="ml-auto shrink-0 font-mono text-[9px] uppercase leading-none tracking-[0.12em] text-accent">
+            {pending} pend
+          </span>
+        )}
+      </button>
+
+      <ZoneStatusBadge status={zone.status} size="sm" />
+
+      <button
+        type="button"
+        onClick={onReport}
+        aria-label={`Report a sighting in ${zone.name}`}
+        title={`Report a sighting in ${zone.name}`}
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line text-muted transition-colors hover:border-accent/40 hover:text-accent"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          className="h-3.5 w-3.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 8h3l1.5-2h7L17 8h3v11H4z" />
+          <circle cx="12" cy="13" r="3.2" />
+        </svg>
+      </button>
     </div>
   )
 }

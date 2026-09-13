@@ -236,6 +236,21 @@ export function clamp01(value: number): number {
  * This is the `animatedIndex` equivalent — everything that reacts to the sheet
  * (map recede, chrome fade, sheet's own readouts) reads this one number.
  */
+/**
+ * Should a click on the sheet handle be ignored because it is the tail of a
+ * drag?
+ *
+ * Only for pointer-originated clicks. `MouseEvent.detail` is 0 for activation
+ * that did not come from a pointer — keyboard `Enter`/`Space` on the focused
+ * button, assistive tech, `element.click()` — and those must always work, or a
+ * keyboard user is locked out of the handle the moment anything has been
+ * dragged. Found in the browser pass: the sheet was dragged, the handle was
+ * activated with the keyboard, and nothing happened.
+ */
+export function isDragTail(didDrag: boolean, detail: number): boolean {
+  return didDrag && detail !== 0
+}
+
 export function underlayProgress(offset: number, offsets: SheetOffsets): number {
   const span = offsets.peek - offsets.full
   if (!isPositiveNumber(span)) return 0

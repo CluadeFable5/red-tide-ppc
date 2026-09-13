@@ -11,6 +11,7 @@ import {
   type SheetOffsets,
   chromeOpacity,
   clampOffset,
+  isDragTail,
   nearestAnchor,
   nextSheetAnchor,
   resolveSheetAnchor,
@@ -301,5 +302,21 @@ describe('chromeOpacity', () => {
     // blank the legend and the gauge off the map.
     expect(chromeOpacity(Number.NaN)).toBe(1)
     expect(chromeOpacity(-1)).toBe(1)
+  })
+})
+
+describe('isDragTail', () => {
+  it('ignores a pointer click that trails a drag', () => {
+    expect(isDragTail(true, 1)).toBe(true)
+    expect(isDragTail(true, 2)).toBe(true)
+  })
+
+  it('keeps a click that was not caused by a drag', () => {
+    expect(isDragTail(false, 1)).toBe(false)
+  })
+
+  it('always lets keyboard and assistive-tech activation through', () => {
+    expect(isDragTail(true, 0)).toBe(false)
+    expect(isDragTail(false, 0)).toBe(false)
   })
 })
