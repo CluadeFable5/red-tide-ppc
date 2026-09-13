@@ -42,12 +42,22 @@ function FitToBounds({
   return null
 }
 
-/** Zooms to a single zone when it is picked from the list below the map. */
+/**
+ * Zooms to a single zone, but only when a focus was explicitly requested
+ * (the list below the map bumps `token`).
+ *
+ * Gating on the token matters: tapping a polygon on the map also sets
+ * `selectedZoneId`, which changes the `zone` prop. Without the token guard
+ * every map tap would re-fit the view and yank the popup out from under the
+ * user's finger.
+ */
 function FocusZone({ zone, token }: { zone: Zone | null; token: number }) {
   const map = useMap()
+  const lastToken = useRef(0)
 
   useEffect(() => {
-    if (!zone || token === 0) return
+    if (!zone || token === 0 || token === lastToken.current) return
+    lastToken.current = token
     const focusBox = zonesBoundingBox([zone.polygon])
     if (focusBox) map.fitBounds(focusBox, { padding: [56, 56], maxZoom: 13 })
   }, [zone, token, map])
