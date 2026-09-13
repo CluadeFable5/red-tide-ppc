@@ -84,8 +84,9 @@ function FocusZone({ zone, token }: { zone: Zone | null; token: number }) {
  * -----------
  * `attributionControl={false}`: the control is pinned to the bottom-right of the
  * map, which is underneath the sheet at every anchor. OSM attribution is a
- * licence requirement, so it lives in the sheet's always-visible peek row
- * instead — see the footer in ZoneSheet.tsx.
+ * licence requirement, so it lives on the sheet instead: a compact `© OSM` link
+ * in the always-visible peek row, with the full credit in the sheet footer
+ * (ZoneSheet.tsx).
  */
 export function Map({
   zones,

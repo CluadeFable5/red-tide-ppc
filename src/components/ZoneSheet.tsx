@@ -155,7 +155,16 @@ export function ZoneSheet({
             {summary}
           </p>
 
-          <span className="ml-auto shrink-0 font-mono text-[9px] leading-none tabular-nums text-faint">
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto shrink-0 font-mono text-[9px] uppercase leading-none tracking-[0.12em] text-faint transition-colors hover:text-accent"
+          >
+            © OSM
+          </a>
+
+          <span className="shrink-0 font-mono text-[9px] leading-none tabular-nums text-faint">
             {anchorReadout(sheet.anchor)}
           </span>
 
@@ -200,7 +209,7 @@ export function ZoneSheet({
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 sm:px-4">
         <AdvisoryBanner advisoryCount={advisoryCount} />
 
-        <div className="mt-5 flex items-baseline justify-between gap-2">
+        <div className="mt-4 flex items-baseline justify-between gap-2">
           <h2 className="font-mono text-[10px] uppercase tracking-[0.18em] text-faint">
             Zones <span className="text-paper/70">[{zones.length}]</span>
           </h2>
@@ -237,7 +246,7 @@ export function ZoneSheet({
                   <button
                     type="button"
                     onClick={() => onFocusZone(zone.id)}
-                    className="block w-full p-3.5 text-left"
+                    className="block w-full p-3 text-left"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="font-display text-lg leading-none text-paper">
@@ -265,7 +274,7 @@ export function ZoneSheet({
                       </p>
                     )}
                   </button>
-                  <div className="flex items-center justify-between gap-2 border-t border-line/70 px-3.5 py-2">
+                  <div className="flex items-center justify-between gap-2 border-t border-line/70 px-3 py-1.5">
                     <button
                       type="button"
                       onClick={() => onReport(zone.id)}
@@ -331,7 +340,7 @@ export function ZoneSheet({
 function AdvisoryBanner({ advisoryCount }: { advisoryCount: number }) {
   if (advisoryCount > 0) {
     return (
-      <div className="relative overflow-hidden rounded-lg border border-advisory/30 bg-advisory/8 p-3.5 pl-4">
+      <div className="relative overflow-hidden rounded-lg border border-advisory/30 bg-advisory/8 p-3 pl-4">
         <span className="absolute inset-y-0 left-0 w-1 bg-advisory" aria-hidden="true" />
         <h2 className="font-display text-lg leading-none text-advisory">
           {advisoryCount} {advisoryCount === 1 ? 'zone is' : 'zones are'} under advisory
@@ -346,7 +355,7 @@ function AdvisoryBanner({ advisoryCount }: { advisoryCount: number }) {
   }
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-safe/25 bg-safe/6 p-3.5 pl-4">
+    <div className="relative overflow-hidden rounded-lg border border-safe/25 bg-safe/6 p-3 pl-4">
       <span className="absolute inset-y-0 left-0 w-1 bg-safe" aria-hidden="true" />
       <h2 className="font-display text-lg leading-none text-safe">
         No advisories recorded right now
