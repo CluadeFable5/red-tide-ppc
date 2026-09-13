@@ -1,8 +1,9 @@
 # Design References & Stack Decisions
 
-**Status:** pre-build research. No application code exists yet — this document records
-verified tooling, rejected candidates, and known pitfalls so the design pass can start
-without re-litigating decisions.
+**Status:** ✅ **delivered.** The design/motion pass is implemented and open as PR #2
+(`arena/01a09693-red-tide-ppc` → `main`). Sections 1–7 are the pre-build research this
+document was written for; section 12 records what actually shipped and where it diverged
+from the plan.
 
 **Verified:** 2026-09-13
 **Author:** design/motion agent (Arena session, branch `arena/01a09693-red-tide-ppc`)
@@ -225,3 +226,53 @@ flow it does not import.
    cannot create or push other branches. The working rule holds (never commit to `main`,
    open the PR from the session branch into `main`), so the only delta from the requested
    `design-pass` name is the branch label itself.
+
+---
+
+## 12. What shipped
+
+Implemented across eight commits on `arena/01a09693-red-tide-ppc`, one per surface, each
+verified with `typecheck` + `build` + `test` (66/66) before committing.
+
+| Commit | Surface |
+|---|---|
+| `fe7d128` | Design tokens, typefaces, base dark theme |
+| `d1bc1e6` | Map-first landing framing + persistent legend |
+| `e89dcde` | Zone popup: entrance, status glow, type hierarchy |
+| `f9159ba` | Report form: sheet entrance, submit/success states |
+| `06468d2` | Admin review: queue, approve/reject affordances |
+| `7c7f252` | Branded loading states |
+| `62101f3` | Route cross-fade |
+| `a9364bc` | Toast restyle + cleanup |
+
+### Divergences from this plan
+
+- **Pulse moved to `advisory`.** §8 assigned the attention pulse to the "advisory"
+  state as briefed, and it stayed there. Only ONE status pulses — two animated states
+  means neither reads as urgent.
+- **`animejs` confirmed dropped.** CSS keyframes handled everything that needed a loop;
+  `motion` handled everything that needed mount/unmount coordination. A second library
+  would have been duplicative.
+- **`thinking-orbs` not adopted.** The loading state is hand-built
+  (`src/components/LoadingState.tsx`) with a self-drawing brand mark, avoiding the second
+  dependency. Revisit only if a richer loader is wanted later.
+- **react-bits not pulled.** Nothing in its catalogue mapped to a map/popup/admin surface;
+  the value was in the reference list itself, not the components.
+- **Leaflet popup close is not animated.** Leaflet removes the popup node synchronously in
+  its own `onRemove`, so there is no frame to animate out in. Intercepting it means
+  monkey-patching Leaflet, which is not worth the risk to the popup → report-form flow.
+  Entrance is animated; close stays crisp. Documented in `ZonePopup.tsx`.
+- **Route transitions are opacity-only.** Animating transform/filter on an ancestor of a
+  live Leaflet map risks a mis-measured canvas. Opacity removes the hard cut without
+  touching the map's coordinate space.
+
+### New module in the design layer
+
+`src/styles/statusTheme.ts` — dark-ground status colours derived from the semantic
+source of truth in `src/lib/status.ts`, which was left untouched. Labels and guidance are
+still read from `ZONE_STATUS_META`, so wording stays single-sourced while presentation is
+themed.
+
+⚠️ `StatusMeta.badgeClass` and `.softClass` in `src/lib/status.ts` now have **zero
+consumers**. They are dead and light-theme (`bg-green-50` on a #080808 ground reads as a
+bright blob) — safe to delete on the next touch of that file.
