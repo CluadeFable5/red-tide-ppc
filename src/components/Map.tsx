@@ -129,7 +129,14 @@ export function Map({
               click: () => onSelectZone(zone.id),
             }}
           >
-            <Popup maxWidth={320} minWidth={250} autoPanPadding={[16, 16]}>
+            <Popup
+              // The class lands on Leaflet's `.leaflet-popup` container and is
+              // what lets index.css tint the card, tip and glow per status.
+              className={`zone-popup zone-popup--${zone.status}`}
+              maxWidth={340}
+              minWidth={260}
+              autoPanPadding={[16, 16]}
+            >
               <ZonePopup
                 zone={zone}
                 pendingCount={pendingCounts[zone.id] ?? 0}

@@ -51,21 +51,23 @@ const ZONE_THEME: Record<ZoneStatus, StatusTheme> = {
     glowClass: '',
     pulses: false,
   },
-  // The one status that asks the user to keep watching. It gets the pulse and
-  // the widest glow so it is the first thing seen on a crowded map.
   unconfirmed: {
     hex: '#f0a500',
     pillClass: 'bg-accent/14 text-accent ring-1 ring-inset ring-accent/35',
     quietPillClass: 'bg-accent/10 text-accent/90 ring-1 ring-inset ring-accent/25',
-    glowClass: 'shadow-[0_0_20px_-2px_#f0a500]',
-    pulses: true,
+    glowClass: '',
+    pulses: false,
   },
+  // Only ONE status pulses. `advisory` is the safety-critical one — it is the
+  // "do not eat shellfish" state — so it owns the animation. Giving two states
+  // a pulse would mean neither reads as urgent. `unconfirmed` is instead
+  // distinguished by amber and by a dashed outline on the map.
   advisory: {
     hex: '#ff5252',
     pillClass: 'bg-advisory/14 text-advisory ring-1 ring-inset ring-advisory/35',
     quietPillClass: 'bg-advisory/10 text-advisory/90 ring-1 ring-inset ring-advisory/25',
     glowClass: 'shadow-[0_0_20px_-2px_#ff5252]',
-    pulses: false,
+    pulses: true,
   },
 }
 

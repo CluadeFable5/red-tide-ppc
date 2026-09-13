@@ -257,6 +257,147 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
+   Zone popups.
+
+   IMPORTANT — which element may be animated:
+   Leaflet positions the popup by writing a `transform` onto `.leaflet-popup`
+   itself (`setPosition(this._container, …)`), so animating transform there
+   would fight Leaflet and throw the popup off its anchor.
+   `.leaflet-popup-content-wrapper` is NOT positioned by Leaflet, so that is
+   where the entrance animation runs.
+   --------------------------------------------------------------------------- */
+
+/* Per-status accent, consumed by the hairline and the glow below. */
+.zone-popup--safe {
+  --popup-accent: var(--color-safe);
+  --popup-glow: transparent;
+}
+.zone-popup--unconfirmed {
+  --popup-accent: var(--color-unconfirmed);
+  --popup-glow: color-mix(in srgb, var(--color-unconfirmed) 38%, transparent);
+}
+.zone-popup--advisory {
+  --popup-accent: var(--color-advisory);
+  --popup-glow: color-mix(in srgb, var(--color-advisory) 46%, transparent);
+}
+
+@keyframes popup-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes popup-tip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Ambient attention glow — `advisory` only. See statusTheme.ts for why exactly
+   one status is allowed to animate. */
+@keyframes popup-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 18px 42px -16px rgb(0 0 0 / 0.85),
+      0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow:
+      0 18px 42px -16px rgb(0 0 0 / 0.85),
+      0 0 30px -2px var(--popup-glow);
+  }
+}
+
+.zone-popup .leaflet-popup-content-wrapper {
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  /* The status hairline. A border rather than a gradient so it follows the top
+     corners instead of squaring off against them. */
+  border-top: 2px solid var(--popup-accent);
+  border-radius: 14px;
+  background: var(--color-ink-2);
+  color: var(--color-paper);
+  box-shadow: 0 18px 42px -16px rgb(0 0 0 / 0.85);
+  animation: popup-card-in 240ms var(--ease-out-quint) both;
+}
+
+/* The glow is a second animation on the same element. Only advisory gets it,
+   so it is declared separately rather than in the rule above. */
+.zone-popup--advisory .leaflet-popup-content-wrapper {
+  animation:
+    popup-card-in 240ms var(--ease-out-quint) both,
+    popup-glow 2.6s ease-in-out 240ms infinite;
+}
+
+.zone-popup .leaflet-popup-tip {
+  background: var(--color-ink-2);
+  box-shadow: none;
+  animation: popup-tip-in 240ms var(--ease-out-quint) both;
+}
+
+.zone-popup .leaflet-popup-content {
+  margin: 0;
+  /* !important: Leaflet writes an inline width on this element. */
+  width: min(84vw, 320px) !important;
+  line-height: 1.45;
+}
+
+/* Content stagger. Replays on every open because Leaflet detaches and
+   re-attaches the popup node, which restarts CSS animations. `--i` is set per
+   line in ZonePopup.tsx. */
+@keyframes popup-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.zone-popup-line {
+  animation: popup-line-in 300ms var(--ease-out-quint) both;
+  animation-delay: calc(70ms + var(--i, 0) * 45ms);
+}
+
+/* Specificity note: Leaflet ships `.leaflet-container a.leaflet-popup-close-button`
+   (3 classes + element). Matching that prefix with `.zone-popup` added keeps
+   this override ahead of it without reaching for `!important`. */
+.leaflet-container .zone-popup a.leaflet-popup-close-button {
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font: 20px/1 var(--font-sans);
+  color: var(--color-faint);
+  background: transparent;
+  border-radius: 8px;
+  transition:
+    color var(--dur-fast) var(--ease-out-quint),
+    background-color var(--dur-fast) var(--ease-out-quint);
+}
+
+.leaflet-container .zone-popup a.leaflet-popup-close-button:hover,
+.leaflet-container .zone-popup a.leaflet-popup-close-button:focus-visible {
+  color: var(--color-paper);
+  background: color-mix(in srgb, var(--color-paper) 10%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
    Respect reduced-motion. Ambient loops are decorative, so they stop; the
    transitions that carry meaning are shortened rather than removed.
    --------------------------------------------------------------------------- */
