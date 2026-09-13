@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Polygon as LeafletPolygon } from 'leaflet'
 import { MapContainer, Polygon, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet'
 import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, zonesBoundingBox } from '../data/zones'
 import { zonePaint } from '../styles/statusTheme'
@@ -66,6 +67,21 @@ function FocusZone({ zone, token }: { zone: Zone | null; token: number }) {
 }
 
 /**
+ * Is `target` an SVG `<path>` in the SVG namespace?
+ *
+ * Duck-typed instead of `instanceof SVGPathElement` — jsdom (where the
+ * regression tests run) does not define that global, while `namespaceURI`
+ * and `tagName` are spec'd and stable in every environment.
+ */
+function isZonePath(target: EventTarget | null): target is SVGPathElement {
+  return (
+    target instanceof Element &&
+    target.namespaceURI === 'http://www.w3.org/2000/svg' &&
+    target.tagName === 'path'
+  )
+}
+
+/**
  * Lights the polygon under the pointer from the moment the press starts.
  *
  * Thin SVG strokes have a slow `fill-opacity` ramp (200ms, see index.css), and
@@ -112,7 +128,7 @@ function ZonePressFeedback() {
 
     function onPointerDown(event: PointerEvent) {
       const target = event.target
-      if (!(target instanceof SVGPathElement)) return
+      if (!isZonePath(target)) return
       if (!target.classList.contains('zone-path')) return
       cleanup()
       pressed = target
@@ -131,6 +147,121 @@ function ZonePressFeedback() {
   }, [map])
 
   return null
+}
+
+/**
+ * One zone polygon, with its selection modifier kept in sync imperatively.
+ *
+ * WHY THE CLASS APPLICATION IS SPLIT IN TWO
+ * -----------------------------------------
+ * `className="zone-path"` is a *constructor* prop: Leaflet's SVG renderer
+ * reads `options.className` exactly once, in `_initPath`, when the path node
+ * is created as the layer is added to the map. It never re-applies it — and
+ * react-leaflet applies `pathOptions` via `setStyle` *after* the layer exists,
+ * and `setStyle` only writes stroke/fill presentation attributes, never the
+ * class. So `pathOptions.className` (the old code) silently never reached the
+ * DOM in a production single-pass render: it only appeared in dev because
+ * StrictMode's double effect invocation re-added the layer, re-running
+ * `_initPath` against options that the first `setStyle` had already stored.
+ * That is the regression `Map.test.tsx` guards.
+ *
+ * The `--selected` modifier can't be a constructor prop (it changes over the
+ * layer's life), so it is toggled on the path element directly from a layer
+ * ref. In the normal single pass the path already exists by the time this
+ * component's effect runs (children's effects commit before the parent's),
+ * but on StrictMode remounts — and any map remount — Leaflet creates a fresh
+ * path node: the base class comes back from the constructor options, the
+ * imperative modifier does not, so the `add` subscription re-applies it.
+ */
+function ZonePolygon({
+  zone,
+  isSelected,
+  isHovered,
+  onSelectZone,
+  onHover,
+  onLeave,
+  pendingCount,
+  onReport,
+}: {
+  zone: Zone
+  isSelected: boolean
+  isHovered: boolean
+  onSelectZone: (zoneId: string) => void
+  onHover: (zoneId: string) => void
+  onLeave: (zoneId: string) => void
+  pendingCount: number
+  onReport: (zoneId: string) => void
+}) {
+  const layerRef = useRef<LeafletPolygon | null>(null)
+  const selectedRef = useRef(isSelected)
+  selectedRef.current = isSelected
+
+  const syncSelectedClass = () => {
+    const el = layerRef.current?.getElement()
+    if (el) el.classList.toggle('zone-path--selected', selectedRef.current)
+  }
+
+  useEffect(() => {
+    const layer = layerRef.current
+    if (!layer) return
+    // Path not created yet (map not added) — the `add` listener applies it
+    // the moment it is.
+    syncSelectedClass()
+    layer.on('add', syncSelectedClass)
+    return () => {
+      layer.off('add', syncSelectedClass)
+    }
+  }, [])
+
+  useEffect(() => {
+    syncSelectedClass()
+  }, [isSelected])
+
+  const paint = zonePaint(zone.status)
+
+  return (
+    <Polygon
+      ref={layerRef}
+      positions={zone.polygon}
+      // Constructor prop — applied by Leaflet when the path is created.
+      className="zone-path"
+      pathOptions={{
+        color: paint.hex,
+        fillColor: paint.hex,
+        weight: isSelected ? paint.weightSelected : paint.weight,
+        opacity: 0.95,
+        // The ramp itself. Leaflet writes these as attributes and the
+        // transition on `.zone-path` does the interpolating — see
+        // `zonePaint` in styles/statusTheme.ts for why it is a sequence.
+        fillOpacity: isSelected
+          ? paint.fillSelected
+          : isHovered
+            ? paint.fillHover
+            : paint.fill,
+        dashArray: paint.dashArray,
+      }}
+      eventHandlers={{
+        click: () => onSelectZone(zone.id),
+        mouseover: () => onHover(zone.id),
+        mouseout: () => onLeave(zone.id),
+      }}
+    >
+      <Popup
+        // The class lands on Leaflet's `.leaflet-popup` container and is
+        // what lets index.css tint the card, tip and glow per status.
+        className={`zone-popup zone-popup--${zone.status}`}
+        maxWidth={340}
+        minWidth={260}
+        autoPanPadding={[16, 16]}
+      >
+        <ZonePopup
+          zone={zone}
+          pendingCount={pendingCount}
+          onReport={() => onReport(zone.id)}
+        />
+      </Popup>
+    </Polygon>
+  )
 }
 
 /**
@@ -206,62 +337,21 @@ export function Map({
       <FocusZone zone={focusZone} token={focusToken} />
       <ZonePressFeedback />
 
-      {zones.map((zone) => {
-        const paint = zonePaint(zone.status)
-        const isSelected = zone.id === selectedZoneId
-        const isHovered = zone.id === hoveredZoneId
-
-        return (
-          <Polygon
-            key={zone.id}
-            positions={zone.polygon}
-            pathOptions={{
-              color: paint.hex,
-              fillColor: paint.hex,
-              weight: isSelected ? paint.weightSelected : paint.weight,
-              opacity: 0.95,
-              // The ramp itself. Leaflet writes these as attributes and the
-              // transition on `.zone-path` does the interpolating — see
-              // `zonePaint` in styles/statusTheme.ts for why it is a sequence.
-              fillOpacity: isSelected
-                ? paint.fillSelected
-                : isHovered
-                  ? paint.fillHover
-                  : paint.fill,
-              dashArray: paint.dashArray,
-              // Hooks for the CSS transition and press feedback, plus a stable
-              // class for tests. The `--selected` modifier exists so the CSS
-              // press rule can exempt the current selection: pressing an
-              // already-selected polygon must never dim it below its selected
-              // fill, least of all for an advisory.
-              className: isSelected
-                ? 'zone-path zone-path--selected'
-                : 'zone-path',
-            }}
-            eventHandlers={{
-              click: () => onSelectZone(zone.id),
-              mouseover: () => setHoveredZoneId(zone.id),
-              mouseout: () =>
-                setHoveredZoneId((current) => (current === zone.id ? null : current)),
-            }}
-          >
-            <Popup
-              // The class lands on Leaflet's `.leaflet-popup` container and is
-              // what lets index.css tint the card, tip and glow per status.
-              className={`zone-popup zone-popup--${zone.status}`}
-              maxWidth={340}
-              minWidth={260}
-              autoPanPadding={[16, 16]}
-            >
-              <ZonePopup
-                zone={zone}
-                pendingCount={pendingCounts[zone.id] ?? 0}
-                onReport={() => onReport(zone.id)}
-              />
-            </Popup>
-          </Polygon>
-        )
-      })}
+      {zones.map((zone) => (
+        <ZonePolygon
+          key={zone.id}
+          zone={zone}
+          isSelected={zone.id === selectedZoneId}
+          isHovered={zone.id === hoveredZoneId}
+          onSelectZone={onSelectZone}
+          onHover={setHoveredZoneId}
+          onLeave={(zoneId) =>
+            setHoveredZoneId((current) => (current === zoneId ? null : current))
+          }
+          pendingCount={pendingCounts[zone.id] ?? 0}
+          onReport={onReport}
+        />
+      ))}
     </MapContainer>
   )
 }
