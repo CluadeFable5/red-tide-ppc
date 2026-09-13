@@ -1,16 +1,74 @@
 @import "tailwindcss";
 
-/* -------------------------------------------------------------------------
-   Theme tokens.
-   The three status colours must stay in sync with `src/lib/status.ts`, which
-   hands the same hex values to Leaflet for the SVG polygons.
-   ------------------------------------------------------------------------- */
+/* ===========================================================================
+   Red Tide PPC — design tokens
+
+   Identity: near-black ground, amber accent, off-white type.
+   Type scale: Bebas Neue (display) / Space Grotesk (body) / JetBrains Mono (data).
+
+   The three status colours are ALSO handed to Leaflet as raw hex for the SVG
+   polygons — see `src/styles/statusTheme.ts`, which mirrors these values. If you
+   change a status colour here, change it there too.
+   =========================================================================== */
+
 @theme {
-  --color-safe: #16a34a;
-  --color-unconfirmed: #f59e0b;
-  --color-advisory: #dc2626;
-  --color-ocean: #0b2239;
-  --color-ocean-soft: #16406a;
+  /* -- Ground ------------------------------------------------------------ */
+  --color-ink: #080808;
+  /* Raised surfaces: sheets, cards, popups. */
+  --color-ink-2: #101010;
+  --color-ink-3: #171717;
+  /* Hairlines. Kept dim: on near-black, a bright border reads as a mistake. */
+  --color-line: #242424;
+  --color-line-soft: #1a1a1a;
+
+  /* -- Accent ------------------------------------------------------------ */
+  --color-accent: #f0a500;
+  /* Amber tinted toward the background, for fills that must not shout. */
+  --color-accent-deep: #4a3400;
+  --color-accent-dim: #a87400;
+
+  /* -- Type -------------------------------------------------------------- */
+  --color-paper: #eaeaea;
+  --color-muted: #9d9d9d;
+  --color-faint: #6e6e6e;
+
+  /* -- Status ------------------------------------------------------------
+     Retuned for a near-black ground: the light-theme values (green-600,
+     amber-500, red-600) go muddy against #080808. These are lighter and more
+     saturated so all three stay distinguishable, including for the ~8% of
+     men with red/green colour vision deficiency — which is why status is
+     never communicated by colour alone anywhere in this UI.              */
+  --color-safe: #3ddc84;
+  --color-unconfirmed: #f0a500;
+  --color-advisory: #ff5252;
+
+  /* -- Typography -------------------------------------------------------- */
+  --font-display: "Bebas Neue", "Arial Narrow", "Haettenschweiler", sans-serif;
+  --font-sans:
+    "Space Grotesk", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+/* Legacy alias. The pre-design-pass components referenced `ocean`; it now maps
+   to a raised dark surface so any not-yet-restyled markup stays coherent
+   instead of flashing navy. Remove once nothing references it. */
+@theme {
+  --color-ocean: #1c1c1c;
+  --color-ocean-soft: #2a2a2a;
+}
+
+/* ---------------------------------------------------------------------------
+   Motion tokens. One place to tune feel; `motion` and CSS both read these.
+   --------------------------------------------------------------------------- */
+:root {
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 140ms;
+  --dur-base: 220ms;
+  --dur-slow: 380ms;
 }
 
 html,
@@ -21,67 +79,183 @@ body,
 
 body {
   margin: 0;
-  background-color: var(--color-slate-100);
-  color: var(--color-slate-900);
+  background-color: var(--color-ink);
+  color: var(--color-paper);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  font-family:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
+  /* Stop iOS Safari inflating type in landscape. */
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
 }
 
-/* -------------------------------------------------------------------------
-   Leaflet tweaks. Loaded after Tailwind so the popup chrome looks like the
-   rest of the app instead of default Leaflet.
-   ------------------------------------------------------------------------- */
+/* Display type is condensed and tight; it relies on Bebas being all-caps by
+   design, so we never apply `uppercase` on top of it. */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.01em;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: var(--color-ink);
+}
+
+/* Amber focus ring everywhere, and only for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Thin dark scrollbars so sheets don't get a bright OS bar in the middle of a
+   near-black page. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   Shared keyframes.
+
+   Ambient effects only. Anything that has to coordinate mount/unmount is done
+   in `motion` (see src/motion/) — CSS cannot hold an element in the DOM while
+   it animates out.
+   --------------------------------------------------------------------------- */
+
+/* Advisory attention pulse. Deliberately subtle: this runs continuously on the
+   map legend and popups, and a loud loop becomes infuriating within a minute.
+   The ring, not just the dot, is what moves — so it reads in peripheral vision
+   without requiring colour discrimination. */
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0;
+    transform: scale(2.1);
+  }
+}
+
+/* Slow drift for the loading wordmark's underline. */
+@keyframes sheen {
+  0% {
+    background-position: -140% 0;
+  }
+  100% {
+    background-position: 240% 0;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Applied to the element that carries the pulse ring. */
+.animate-status-pulse {
+  animation: status-pulse 2.4s var(--ease-out-quint) infinite;
+}
+
+.animate-rise-in {
+  animation: rise-in var(--dur-slow) var(--ease-out-quint) both;
+}
+
+.animate-fade-in {
+  animation: fade-in var(--dur-base) var(--ease-out-quint) both;
+}
+
+/* Stagger helper: set `--stagger` to the item index. */
+.stagger-item {
+  animation-delay: calc(var(--stagger, 0) * 55ms);
+}
+
+/* ---------------------------------------------------------------------------
+   Leaflet. Loaded after Tailwind so our chrome wins over Leaflet's defaults.
+   --------------------------------------------------------------------------- */
+
 .leaflet-container {
   font: inherit;
-  background: #b6d3e4;
+  background: #0b0b0b;
   /* Mobile: stop the page scrolling while the map is being dragged. */
   touch-action: pan-x pan-y;
+  /* Leaflet ships a light-theme focus ring; ours is amber. */
+  -webkit-tap-highlight-color: transparent;
 }
 
-.leaflet-popup-content-wrapper {
-  border-radius: 16px;
-  padding: 0;
-  overflow: hidden;
-  box-shadow: 0 12px 32px rgb(2 6 23 / 0.28);
+/* OpenStreetMap raster tiles are a light basemap. Inverting them with a hue
+   rotation is the standard way to get a coherent dark map without a paid tile
+   provider — it keeps coastlines and place labels legible while the whole
+   surface sits calmly under the amber/red zone polygons.
+
+   Applied to the tile pane only, so the attribution and controls keep their
+   own correct colours. */
+.leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.92)
+    saturate(0.7);
 }
 
-.leaflet-popup-content {
-  margin: 0;
-  /* !important: Leaflet writes an inline width on this element. */
-  width: min(78vw, 300px) !important;
-  line-height: 1.45;
+/* Zoom control, restyled to match the sheets. */
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  background: color-mix(in srgb, var(--color-ink-2) 92%, transparent);
+  color: var(--color-paper);
+  border-bottom-color: var(--color-line);
 }
 
-.leaflet-popup-tip {
-  box-shadow: none;
+.leaflet-bar a:hover {
+  background: var(--color-ink-3);
+  color: var(--color-accent);
 }
 
-.leaflet-container a.leaflet-popup-close-button {
-  top: 8px;
-  right: 8px;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  font:
-    18px/24px ui-sans-serif,
-    system-ui,
-    sans-serif;
-  color: #475569;
-  background: #ffffff;
-  border-radius: 9999px;
+.leaflet-bar a.leaflet-disabled {
+  background: var(--color-ink);
+  color: var(--color-faint);
 }
 
-.leaflet-container a.leaflet-popup-close-button:hover {
-  color: #0f172a;
-  background: #f1f5f9;
+.leaflet-control-attribution {
+  background: color-mix(in srgb, var(--color-ink) 78%, transparent) !important;
+  color: var(--color-faint) !important;
+  font-size: 10px;
 }
 
-/* Respect reduced-motion preferences. */
+.leaflet-control-attribution a {
+  color: var(--color-muted) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Respect reduced-motion. Ambient loops are decorative, so they stop; the
+   transitions that carry meaning are shortened rather than removed.
+   --------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  .leaflet-fade-anim .leaflet-popup {
-    transition: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-status-pulse {
+    animation: none;
+    opacity: 0.5;
+    transform: none;
   }
 }
