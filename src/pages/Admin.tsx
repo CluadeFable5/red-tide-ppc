@@ -4,6 +4,7 @@ import { AdminGate } from '../components/AdminGate'
 import { DemoBanner } from '../components/DemoBanner'
 import { Header } from '../components/Header'
 import { Notice } from '../components/Notice'
+import { ReportQueueSkeleton } from '../components/LoadingState'
 import { ReportCard } from '../components/ReportCard'
 import { ZoneStatusBadge } from '../components/StatusBadge'
 import { ZONE_STATUS_META } from '../lib/status'
@@ -41,6 +42,7 @@ export function Admin() {
 function AdminDashboard() {
   const zones = useAppStore((state) => state.zones)
   const reports = useAppStore((state) => state.reports)
+  const reportsReady = useAppStore((state) => state.reportsReady)
   const busyReportId = useAppStore((state) => state.busyReportId)
   const busyZoneId = useAppStore((state) => state.busyZoneId)
   const approveReport = useAppStore((state) => state.approveReport)
@@ -123,7 +125,9 @@ function AdminDashboard() {
 
         {tab === 'pending' && (
           <section className="mt-5" aria-label="Pending reports">
-            {pendingReports.length === 0 ? (
+            {!reportsReady ? (
+              <ReportQueueSkeleton />
+            ) : pendingReports.length === 0 ? (
               <EmptyState
                 title="Nothing waiting for review"
                 body="New community reports will show up here as soon as they are submitted."

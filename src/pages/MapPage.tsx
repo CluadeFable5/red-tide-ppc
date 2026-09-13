@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { DemoBanner } from '../components/DemoBanner'
 import { Header } from '../components/Header'
 import { Legend } from '../components/Legend'
+import { MapLoadingOverlay, ZoneListSkeleton } from '../components/LoadingState'
 import { Map } from '../components/Map'
 import { Notice } from '../components/Notice'
 import { ReportForm } from '../components/ReportForm'
@@ -133,13 +134,7 @@ export function MapPage() {
 
         <Legend counts={statusCounts} />
 
-        {!zonesReady && (
-          <div className="absolute inset-0 z-[1005] grid place-items-center bg-ink/85 backdrop-blur-sm">
-            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-accent">
-              Loading zones…
-            </p>
-          </div>
-        )}
+        {!zonesReady && <MapLoadingOverlay />}
       </section>
 
       <main className="mx-auto max-w-5xl px-4 pb-16 pt-5 sm:pt-7">
@@ -184,6 +179,8 @@ export function MapPage() {
           Zones{' '}
           <span className="font-mono text-sm text-faint">({zones.length})</span>
         </h2>
+
+        {!zonesReady && <ZoneListSkeleton />}
 
         <ul className="mt-3 grid gap-2.5 sm:grid-cols-2">
           {zones.map((zone, index) => {
