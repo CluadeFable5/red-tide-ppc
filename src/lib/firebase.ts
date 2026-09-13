@@ -1,20 +1,18 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app'
 import { getFirestore, type Firestore } from 'firebase/firestore'
-import { getStorage, type FirebaseStorage } from 'firebase/storage'
 
 /**
  * Firebase bootstrap.
  *
  * The web config below is PUBLIC by design — it ships in the browser bundle.
  * It is an identifier, not a secret. Access control lives entirely in
- * `firestore.rules` / `storage.rules`.
+ * `firestore.rules`.
  */
 
 export interface FirebaseConfig {
   apiKey: string
   authDomain: string
   projectId: string
-  storageBucket: string
   messagingSenderId: string
   appId: string
 }
@@ -32,7 +30,6 @@ const PLACEHOLDERS = new Set([
   'AIza...',
   'your-project.firebaseapp.com',
   'your-project',
-  'your-project.firebasestorage.app',
   '000000000000',
   '1:000000000000:web:0000000000000000',
 ])
@@ -47,7 +44,6 @@ export function readFirebaseConfig(): FirebaseConfig | null {
     apiKey: trimmed(rawEnv.VITE_FIREBASE_API_KEY),
     authDomain: trimmed(rawEnv.VITE_FIREBASE_AUTH_DOMAIN),
     projectId: trimmed(rawEnv.VITE_FIREBASE_PROJECT_ID),
-    storageBucket: trimmed(rawEnv.VITE_FIREBASE_STORAGE_BUCKET),
     messagingSenderId: trimmed(rawEnv.VITE_FIREBASE_MESSAGING_SENDER_ID),
     appId: trimmed(rawEnv.VITE_FIREBASE_APP_ID),
   }
@@ -71,7 +67,6 @@ export const hasFirebaseConfig: boolean = config !== null && !isDemoModeForced()
 
 let appInstance: FirebaseApp | null = null
 let dbInstance: Firestore | null = null
-let storageInstance: FirebaseStorage | null = null
 
 function app(): FirebaseApp {
   if (!appInstance) {
@@ -88,9 +83,4 @@ function app(): FirebaseApp {
 export function firestore(): Firestore {
   if (!dbInstance) dbInstance = getFirestore(app())
   return dbInstance
-}
-
-export function storage(): FirebaseStorage {
-  if (!storageInstance) storageInstance = getStorage(app())
-  return storageInstance
 }

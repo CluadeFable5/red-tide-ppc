@@ -11,7 +11,6 @@ const FULL: Record<string, string> = {
   VITE_FIREBASE_API_KEY: 'AIzaSyTestKey-1234567890',
   VITE_FIREBASE_AUTH_DOMAIN: 'red-tide.firebaseapp.com',
   VITE_FIREBASE_PROJECT_ID: 'red-tide',
-  VITE_FIREBASE_STORAGE_BUCKET: 'red-tide.firebasestorage.app',
   VITE_FIREBASE_MESSAGING_SENDER_ID: '123456789012',
   VITE_FIREBASE_APP_ID: '1:123456789012:web:abc123',
 }
@@ -21,7 +20,6 @@ const PLACEHOLDER: Record<string, string> = {
   VITE_FIREBASE_API_KEY: 'AIza...',
   VITE_FIREBASE_AUTH_DOMAIN: 'your-project.firebaseapp.com',
   VITE_FIREBASE_PROJECT_ID: 'your-project',
-  VITE_FIREBASE_STORAGE_BUCKET: 'your-project.firebasestorage.app',
   VITE_FIREBASE_MESSAGING_SENDER_ID: '000000000000',
   VITE_FIREBASE_APP_ID: '1:000000000000:web:0000000000000000',
 }
@@ -44,7 +42,6 @@ describe('readFirebaseConfig', () => {
       apiKey: FULL.VITE_FIREBASE_API_KEY,
       authDomain: FULL.VITE_FIREBASE_AUTH_DOMAIN,
       projectId: FULL.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: FULL.VITE_FIREBASE_STORAGE_BUCKET,
       messagingSenderId: FULL.VITE_FIREBASE_MESSAGING_SENDER_ID,
       appId: FULL.VITE_FIREBASE_APP_ID,
     })

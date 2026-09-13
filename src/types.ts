@@ -44,7 +44,7 @@ export interface Report {
   id: string
   zoneId: string
   description: string
-  /** Firebase Storage download URL, or null when no photo was attached. */
+  /** Cloudinary secure image URL, or null when no photo was attached. */
   photoUrl: string | null
   /** Epoch ms. */
   submittedAt: number

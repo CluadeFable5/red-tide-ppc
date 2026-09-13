@@ -1,7 +1,7 @@
 /**
  * Small client-side image helper used by the demo backend.
  *
- * The real backend uploads the original file to Firebase Storage. The demo
+ * The real backend uploads the original file to Cloudinary. The demo
  * backend has nowhere to upload to, so it shrinks the image and keeps it as a
  * data URL — that keeps localStorage from exploding when someone demos the app
  * with a phone photo.
