@@ -295,9 +295,9 @@ body {
    ---------------------------------------------------------------------
    Leaflet writes `fill-opacity`, `stroke-width` etc. as SVG *presentation
    attributes*, and a CSS transition on the element interpolates those changes
-   like any other computed-value change. That is what turns a tap into a ramp:
-   hover (synthesised ahead of click on touch) lifts the fill, the click lands
-   on an already-lit polygon, and the popup opens onto it.
+   like any other computed-value change. That is what turns a touch into a ramp:
+   the press lift starts at touchdown, the click lands on an already-lit
+   polygon, and the popup opens onto it.
 
    If a browser ever declines to interpolate an attribute change, the value
    still applies instantly — the degradation is "as before", never broken. */
@@ -306,6 +306,24 @@ body {
     fill-opacity 200ms var(--ease-out-quint),
     stroke-width 200ms var(--ease-out-quint),
     stroke-opacity 200ms var(--ease-out-quint);
+}
+
+/* Press lift.
+   ---------------------------------------------------------------------
+   The class is toggled by <ZonePressFeedback/> from the native `pointerdown`,
+   i.e. while the finger or button is still down. On touch that is the whole
+   point: Leaflet hands a tap's mouseover/click burst to the layer only at
+   touchend, so without this the popup opens while the fill is still at its
+   resting value and the ramp plays underneath it. Measured in this app: the
+   finger lands at t≈18ms, the layer hears anything only at t≈131ms.
+
+   The value is the top of the hover ramp, so a press is the brightest
+   non-selected step for every status and the cue reads the same whatever colour
+   the polygon is. `:not(.zone-path--selected)` keeps it off the current
+   selection, which sits higher (0.46–0.56) and must never be dimmed — least of
+   all for an advisory. */
+.leaflet-overlay-pane path.zone-path--pressed:not(.zone-path--selected) {
+  fill-opacity: 0.44;
 }
 
 /* Zoom control, restyled to match the sheets. */

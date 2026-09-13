@@ -66,6 +66,74 @@ function FocusZone({ zone, token }: { zone: Zone | null; token: number }) {
 }
 
 /**
+ * Lights the polygon under the pointer from the moment the press starts.
+ *
+ * Thin SVG strokes have a slow `fill-opacity` ramp (200ms, see index.css), and
+ * the whole point of that ramp is that it plays *before* the popup opens. On
+ * mouse it does: `mouseover` arrives well ahead of `click`. On touch it does
+ * not — Leaflet's container listens for mouse events only, so a tap is
+ * delivered as a synthesised mouseover/mousedown/mouseup/click burst at
+ * `touchend`, 110ms+ after the finger actually landed. Measured in this app:
+ * touchdown t=18ms, the layer's first event t=131ms.
+ *
+ * So the press state comes from the native `pointerdown`, which does fire with
+ * the touch. The listener is delegated on the map container and runs in the
+ * capture phase, so it cannot be affected by — and cannot affect — Leaflet's
+ * own event plumbing. It only toggles a class; the ramp stays in CSS.
+ *
+ * A press that turns into a pan is released as soon as the pointer travels past
+ * the slop, so dragging the map across a polygon does not leave it lit.
+ */
+function ZonePressFeedback() {
+  const map = useMap()
+
+  useEffect(() => {
+    const container = map.getContainer()
+    let pressed: SVGPathElement | null = null
+    let origin: { x: number; y: number } | null = null
+
+    function cleanup() {
+      pressed?.classList.remove('zone-path--pressed')
+      pressed = null
+      origin = null
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', cleanup)
+      window.removeEventListener('pointercancel', cleanup)
+    }
+
+    function onPointerMove(event: PointerEvent) {
+      if (!origin) return
+      // A few pixels of finger jitter must not cancel the press; anything
+      // further is a map pan, not a tap.
+      if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) {
+        cleanup()
+      }
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target
+      if (!(target instanceof SVGPathElement)) return
+      if (!target.classList.contains('zone-path')) return
+      cleanup()
+      pressed = target
+      origin = { x: event.clientX, y: event.clientY }
+      target.classList.add('zone-path--pressed')
+      window.addEventListener('pointermove', onPointerMove)
+      window.addEventListener('pointerup', cleanup)
+      window.addEventListener('pointercancel', cleanup)
+    }
+
+    container.addEventListener('pointerdown', onPointerDown, { capture: true })
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown, { capture: true })
+      cleanup()
+    }
+  }, [map])
+
+  return null
+}
+
+/**
  * The public map: one Leaflet polygon per zone, coloured by status, with a
  * popup that carries the "Report something here" call to action.
  *
@@ -107,9 +175,12 @@ export function Map({
     [zones, focusZoneId],
   )
 
-  // Hover drives the polygon's fill up a step *before* the click opens the
-  // popup, so the popup lands on a lit polygon. Leaflet synthesises `mouseover`
-  // ahead of `click` on touch too, which is what makes this work on a phone.
+  // Hover drives the polygon's fill up a step so the popup lands on a lit
+  // polygon. On a phone this alone is not enough: Leaflet forwards only *mouse*
+  // events to layers, so a tap delivers mouseover, mousedown and click in one
+  // batch when the finger lifts (measured within 4ms of each other, ~113ms after
+  // touchdown) and the ramp has no head start. `<ZonePressFeedback/>` covers
+  // that window from the native `pointerdown`.
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null)
 
   return (
@@ -133,6 +204,7 @@ export function Map({
 
       <FitToBounds box={box} resetToken={resetToken} />
       <FocusZone zone={focusZone} token={focusToken} />
+      <ZonePressFeedback />
 
       {zones.map((zone) => {
         const paint = zonePaint(zone.status)
@@ -157,8 +229,14 @@ export function Map({
                   ? paint.fillHover
                   : paint.fill,
               dashArray: paint.dashArray,
-              // Hooks for the CSS transition, and a stable class for tests.
-              className: 'zone-path',
+              // Hooks for the CSS transition and press feedback, plus a stable
+              // class for tests. The `--selected` modifier exists so the CSS
+              // press rule can exempt the current selection: pressing an
+              // already-selected polygon must never dim it below its selected
+              // fill, least of all for an advisory.
+              className: isSelected
+                ? 'zone-path zone-path--selected'
+                : 'zone-path',
             }}
             eventHandlers={{
               click: () => onSelectZone(zone.id),
