@@ -37,6 +37,8 @@ export interface StatusTheme {
   pillClass: string
   /** Dimmer pill for dense lists. */
   quietPillClass: string
+  /** Solid fill for selected controls — used by the admin zone-status picker. */
+  solidClass: string
   /** Ambient glow, used sparingly to pull the eye. */
   glowClass: string
   /** Whether this status should carry the attention pulse. */
@@ -48,6 +50,7 @@ const ZONE_THEME: Record<ZoneStatus, StatusTheme> = {
     hex: '#3ddc84',
     pillClass: 'bg-safe/12 text-safe ring-1 ring-inset ring-safe/30',
     quietPillClass: 'bg-safe/8 text-safe/90 ring-1 ring-inset ring-safe/20',
+    solidClass: 'bg-safe text-ink',
     glowClass: '',
     pulses: false,
   },
@@ -55,6 +58,7 @@ const ZONE_THEME: Record<ZoneStatus, StatusTheme> = {
     hex: '#f0a500',
     pillClass: 'bg-accent/14 text-accent ring-1 ring-inset ring-accent/35',
     quietPillClass: 'bg-accent/10 text-accent/90 ring-1 ring-inset ring-accent/25',
+    solidClass: 'bg-accent text-ink',
     glowClass: '',
     pulses: false,
   },
@@ -66,6 +70,7 @@ const ZONE_THEME: Record<ZoneStatus, StatusTheme> = {
     hex: '#ff5252',
     pillClass: 'bg-advisory/14 text-advisory ring-1 ring-inset ring-advisory/35',
     quietPillClass: 'bg-advisory/10 text-advisory/90 ring-1 ring-inset ring-advisory/25',
+    solidClass: 'bg-advisory text-ink',
     glowClass: 'shadow-[0_0_20px_-2px_#ff5252]',
     pulses: true,
   },
@@ -76,6 +81,7 @@ const REPORT_THEME: Record<ReportStatus, StatusTheme> = {
     hex: '#f0a500',
     pillClass: 'bg-accent/14 text-accent ring-1 ring-inset ring-accent/35',
     quietPillClass: 'bg-accent/10 text-accent/90 ring-1 ring-inset ring-accent/25',
+    solidClass: 'bg-accent text-ink',
     glowClass: '',
     pulses: true,
   },
@@ -83,6 +89,7 @@ const REPORT_THEME: Record<ReportStatus, StatusTheme> = {
     hex: '#ff5252',
     pillClass: 'bg-advisory/14 text-advisory ring-1 ring-inset ring-advisory/35',
     quietPillClass: 'bg-advisory/10 text-advisory/90 ring-1 ring-inset ring-advisory/25',
+    solidClass: 'bg-advisory text-ink',
     glowClass: '',
     pulses: false,
   },
@@ -90,6 +97,7 @@ const REPORT_THEME: Record<ReportStatus, StatusTheme> = {
     hex: '#7a7a7a',
     pillClass: 'bg-white/6 text-muted ring-1 ring-inset ring-white/10',
     quietPillClass: 'bg-white/4 text-faint ring-1 ring-inset ring-white/8',
+    solidClass: 'bg-muted text-ink',
     glowClass: '',
     pulses: false,
   },
