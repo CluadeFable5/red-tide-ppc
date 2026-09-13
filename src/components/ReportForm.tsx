@@ -151,7 +151,7 @@ export function ReportForm({
   return (
     <AnimatePresence onExitComplete={onDismissed}>
       {visible && (
-        <div className="fixed inset-0 z-[1000] flex items-end justify-center sm:items-center">
+        <div className="fixed inset-0 z-[1030] flex items-end justify-center sm:items-center">
           <motion.button
             type="button"
             aria-label="Close report form"

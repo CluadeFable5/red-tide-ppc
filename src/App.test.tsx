@@ -10,14 +10,28 @@ import { useAppStore } from './store'
 /**
  * End-to-end UI walk-through of the core loop, rendered for real in jsdom:
  *
- *   public map → tap a zone → report form → submit
- *              → /admin → passcode → approve → zone turns advisory
+ *   /map → tap a zone → report form → submit
+ *        → /admin → passcode → approve → zone turns advisory
  *
  * It runs against the in-memory demo backend, so it needs no Firebase project.
+ *
+ * The map now lives at `/map` (lazy-loaded); `/` is the landing page. Each
+ * test starts at `/` and navigates to the page it walks.
  */
 
 const ZONE = 'Honda Bay — Inner Islands'
 const PASSCODE = 'test-passcode'
+
+/**
+ * Walk from the landing page to the map the way a user would: through the
+ * router's own link. (A raw `history.pushState` clobbers the router's
+ * location state and is not a navigation it will honour.)
+ */
+async function openMap(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(screen.getByRole('link', { name: /open the live map/i }))
+  // The map page is lazy; wait for it to mount.
+  await screen.findByRole('button', { name: 'Reset view' })
+}
 
 function zoneCard(name: string): HTMLElement {
   const heading = screen.getByRole('heading', { name })
@@ -60,9 +74,35 @@ afterEach(() => {
   window.history.pushState({}, '', '/')
 })
 
-describe('public map page', () => {
-  it('lists every seeded zone with its status', async () => {
+describe('landing page (/)', () => {
+  it('shows the decrypted hero, the CTAs and the live readout', async () => {
     render(<App />)
+
+    // The hero labels itself on the heading; the scramble completes shortly
+    // after load and its final text lands in the overlay span.
+    const h1 = screen.getByRole('heading', { name: 'Red Tide' })
+    await waitFor(
+      () => {
+        const overlay = h1.querySelector('span.absolute') as HTMLElement
+        expect(overlay.textContent).toBe('RED TIDE')
+      },
+      { timeout: 3000 },
+    )
+
+    expect(screen.getByRole('link', { name: /open the live map/i })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /report a sighting/i })).toBeTruthy()
+
+    // The live readout lands from the demo backend (synchronous subscribe).
+    expect(await screen.findByText('6 zones watched')).toBeTruthy()
+    expect(screen.getByText('Zones watched')).toBeTruthy()
+  })
+})
+
+describe('map page (/map)', () => {
+  it('lists every seeded zone with its status', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await openMap(user)
 
     for (const name of [
       'Puerto Princesa Bay (City Proper)',
@@ -82,6 +122,7 @@ describe('public map page', () => {
   it('rejects a report that is too short', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMap(user)
 
     await user.click(
       within(zoneCard(ZONE)).getByRole('button', {
@@ -103,6 +144,7 @@ describe('the full report → approve loop', () => {
   it('submits a report, then approves it in admin, turning the zone advisory', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMap(user)
 
     // --- 1. public user files a report -------------------------------
     await user.click(
@@ -190,6 +232,7 @@ describe('photo attachment', () => {
 
     const user = userEvent.setup()
     render(<App />)
+    await openMap(user)
 
     await user.click(
       within(zoneCard(ZONE)).getByRole('button', {

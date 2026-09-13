@@ -1,30 +1,40 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { motion } from 'motion/react'
+import { RegistrationMarks, Scanline, TideGauge } from '../components/Ambient'
 import { DemoBanner } from '../components/DemoBanner'
 import { Header } from '../components/Header'
 import { Legend } from '../components/Legend'
-import { MapLoadingOverlay, ZoneListSkeleton } from '../components/LoadingState'
+import { MapLoadingOverlay } from '../components/LoadingState'
 import { Map } from '../components/Map'
 import { Notice } from '../components/Notice'
 import { ReportForm } from '../components/ReportForm'
-import { ZoneStatusBadge } from '../components/StatusBadge'
-import { ZONE_STATUS_ORDER } from '../lib/status'
+import { ZoneSheet } from '../components/ZoneSheet'
+import { useZoneSheet } from '../motion/useZoneSheet'
 import { selectPendingCountByZone, selectZoneById, useAppStore } from '../store'
-import { zoneTheme } from '../styles/statusTheme'
 import type { Zone, ZoneStatus } from '../types'
 
 /**
  * The public view.
  *
- * Layout intent: on a phone the map IS the hero — it fills the first viewport
- * edge to edge, with the title, admin entry point, legend and demo marker drawn
- * on top of it. There is deliberately no separate banner section above the map,
- * because on a 375×667 screen a banner plus a legend costs ~150px of the ~600px
- * that matter.
+ * LAYERS (back to front)
+ * ----------------------
+ *  1. The map, `fixed inset-0 h-[100dvh]` — the persistent base layer. It is
+ *     never unmounted and never re-created; every other element floats over it.
+ *  2. The map's *underlay* wrapper, which scales/rounds/darkens the map as the
+ *     sheet rises. This is what makes the sheet read as a surface sliding over
+ *     the map instead of a panel glued to the bottom of the screen.
+ *  3. Floating chrome: the app bar, the status pill row, the advisory gauge.
+ *  4. The zone sheet, at peek / mid / full.
+ *  5. Modals: the report form, then toasts.
  *
- * Everything explanatory (the advisory summary, the tappable zone list, the
- * "what is red tide" primer) lives below the fold, where it can be read at
- * leisure rather than crowding the thing people actually came for.
+ * There is no page scroll. Everything that used to live below the fold (the
+ * advisory banner, the zone list, the red-tide primer, the demo notice) lives in
+ * the sheet, which is why the zones are now two gestures away instead of a scroll
+ * away, and why the map is no longer capped at a slice of the viewport.
+ *
+ * The store calls below are unchanged — this page still reads zones/reports and
+ * calls the same actions. Only the presentation moved.
  */
 export function MapPage() {
   const zones = useAppStore((state) => state.zones)
@@ -39,9 +49,18 @@ export function MapPage() {
   const [resetToken, setResetToken] = useState(0)
   const [focusToken, setFocusToken] = useState(0)
 
+  // One controller for the sheet and the map underlay: they read the same
+  // progress value, so they can never disagree mid-drag.
+  const sheet = useZoneSheet('peek')
+
   const pendingCounts = useMemo(
     () => selectPendingCountByZone(reports),
     [reports],
+  )
+
+  const pendingTotal = useMemo(
+    () => Object.values(pendingCounts).reduce((total, count) => total + count, 0),
+    [pendingCounts],
   )
 
   const statusCounts = useMemo(() => {
@@ -55,7 +74,6 @@ export function MapPage() {
   }, [zones])
 
   const reportZone = selectZoneById(zones, reportZoneId)
-  const advisoryCount = statusCounts.advisory
 
   // Presentation latch.
   //
@@ -74,17 +92,29 @@ export function MapPage() {
   function focusZone(zoneId: string) {
     selectZone(zoneId)
     setFocusToken((token) => token + 1)
+    // Picking a zone from the list zooms the map out of sight under the sheet,
+    // so drop the sheet back to peek to actually show it. Without this the list
+    // is a dead end: you tap a zone and nothing appears to happen.
+    if (sheet.anchor !== 'peek') sheet.goTo('peek')
   }
 
   return (
-    <div className="min-h-full">
+    <div className="relative h-[100dvh] overflow-hidden bg-ink">
       {/* ------------------------------------------------------------------
-          Hero: the map itself, full-bleed.
-          `100svh` (small viewport height) rather than `100dvh` so the section
-          does not resize as mobile browser chrome hides and re-shows, which
-          would make the map jitter mid-drag.
+          Layer 1 + 2: the map and its underlay.
+          The recede is driven entirely by the sheet's progress value — scale
+          to 0.96, corner radius up to 18px, veil and inset shadow in — so the
+          whole thing is continuous through a drag rather than snapping at the
+          end of it.
           ------------------------------------------------------------------ */}
-      <section className="relative h-[100svh] min-h-[460px] w-full sm:h-[64vh] sm:min-h-[440px]">
+      <motion.div
+        style={{
+          scale: sheet.underlay.scale,
+          borderRadius: sheet.underlay.radius,
+          transformOrigin: '50% 50%',
+        }}
+        className="fixed inset-0 h-[100dvh] w-full overflow-hidden bg-ink will-change-transform"
+      >
         <Map
           zones={zones}
           pendingCounts={pendingCounts}
@@ -96,225 +126,93 @@ export function MapPage() {
           onReport={openReportForm}
         />
 
-        <Header
-          overlay
-          eyebrow="Puerto Princesa, Palawan"
-          title="Red Tide"
-          right={
-            <>
-              <DemoBanner variant="chip" />
-              <button
-                type="button"
-                onClick={() => setResetToken((token) => token + 1)}
-                aria-label="Reset view"
-                title="Reset view"
-                className="grid h-8 w-8 place-items-center rounded-md border border-line bg-ink-2/85 text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent active:scale-95"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-4 w-4"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
-                >
-                  <circle cx="12" cy="12" r="7" />
-                  <path strokeLinecap="round" d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-                </svg>
-              </button>
-              <Link
-                to="/admin"
-                className="rounded-md border border-line bg-ink-2/85 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent"
-              >
-                Admin
-              </Link>
-            </>
-          }
+        <Scanline />
+        <RegistrationMarks />
+
+        {/* Veil: pushes the map back rather than just shrinking it. */}
+        <motion.span
+          aria-hidden="true"
+          style={{ opacity: sheet.underlay.veil }}
+          className="pointer-events-none absolute inset-0 bg-ink"
         />
+        {/* Inset shadow: the depth cue the veil cannot give — the sheet is
+            casting onto the surface it is covering. Opacity-only, so this
+            never repaints a shadow during a drag. */}
+        <motion.span
+          aria-hidden="true"
+          style={{ opacity: sheet.underlay.shadow }}
+          className="pointer-events-none absolute inset-0 shadow-[inset_0_-36px_64px_-30px_rgba(0,0,0,0.95)]"
+        />
+      </motion.div>
 
-        <Legend counts={statusCounts} />
-
-        {!zonesReady && <MapLoadingOverlay />}
-      </section>
-
-      <main className="mx-auto max-w-5xl px-4 pb-16 pt-5 sm:pt-7">
-        {/* Advisory summary. Kept below the fold with real weight, because when
-            there IS an advisory this is the single most important sentence on
-            the page. */}
-        {advisoryCount > 0 ? (
-          <div className="relative overflow-hidden rounded-xl border border-advisory/30 bg-advisory/8 p-4 pl-5">
-            <span
-              className="absolute inset-y-0 left-0 w-1 bg-advisory"
-              aria-hidden="true"
-            />
-            <h2 className="font-display text-xl leading-none text-advisory">
-              {advisoryCount} {advisoryCount === 1 ? 'zone is' : 'zones are'} under
-              advisory
-            </h2>
-            <p className="mt-2 text-xs leading-relaxed text-paper/70">
-              Do not gather, sell or eat shellfish or <em>alamang</em> from a zone
-              marked <strong className="text-advisory">Advisory</strong>. Fish,
-              squid, shrimp and crab are still safe if they are fresh, cleaned and
-              washed before cooking.
-            </p>
-          </div>
-        ) : (
-          <div className="relative overflow-hidden rounded-xl border border-safe/25 bg-safe/6 p-4 pl-5">
-            <span
-              className="absolute inset-y-0 left-0 w-1 bg-safe"
-              aria-hidden="true"
-            />
-            <h2 className="font-display text-xl leading-none text-safe">
-              No advisories recorded right now
-            </h2>
-            <p className="mt-2 text-xs leading-relaxed text-paper/70">
-              Nothing is currently flagged. Tap a zone on the map and report what
-              you see — water colour, dead shellfish, or anyone feeling numb after
-              eating seafood.
-            </p>
-          </div>
-        )}
-
-        <h2 className="font-display mt-8 text-2xl text-paper">
-          Zones{' '}
-          <span className="font-mono text-sm text-faint">({zones.length})</span>
-        </h2>
-
-        {!zonesReady && <ZoneListSkeleton />}
-
-        <ul className="mt-3 grid gap-2.5 sm:grid-cols-2">
-          {zones.map((zone, index) => {
-            const pending = pendingCounts[zone.id] ?? 0
-            const isSelected = zone.id === selectedZoneId
-            const theme = zoneTheme(zone.status)
-
-            return (
-              <li
-                key={zone.id}
-                className={`animate-rise-in stagger-item group overflow-hidden rounded-xl border bg-ink-2 transition-colors duration-200 ${
-                  isSelected
-                    ? 'border-accent/50 ring-1 ring-accent/20'
-                    : 'border-line hover:border-line-soft hover:bg-ink-3'
-                }`}
-                style={{ ['--stagger' as string]: index }}
+      {/* ------------------------------------------------------------------
+          Layer 3: floating chrome. Unchanged controls, plus the legend and
+          gauge, which fade out as the sheet rises instead of being covered.
+          ------------------------------------------------------------------ */}
+      <Header
+        overlay
+        eyebrow="Puerto Princesa, Palawan"
+        title="Red Tide"
+        right={
+          <>
+            <DemoBanner variant="chip" />
+            <button
+              type="button"
+              onClick={() => setResetToken((token) => token + 1)}
+              aria-label="Reset view"
+              title="Reset view"
+              className="grid h-8 w-8 place-items-center rounded-md border border-line bg-ink-2/85 text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent active:scale-95"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
               >
-                <button
-                  type="button"
-                  onClick={() => focusZone(zone.id)}
-                  className="block w-full p-4 text-left"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="font-display text-lg leading-none text-paper">
-                      {zone.name}
-                    </h3>
-                    <ZoneStatusBadge status={zone.status} size="sm" />
-                  </div>
-                  <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted">
-                    {zone.description}
-                  </p>
-                  {pending > 0 && (
-                    <p className="mt-2 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-accent">
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-accent"
-                        aria-hidden="true"
-                      />
-                      {pending} pending {pending === 1 ? 'report' : 'reports'}
-                    </p>
-                  )}
-                </button>
-                <div className="border-t border-line/70 px-4 py-2.5">
-                  <button
-                    type="button"
-                    onClick={() => openReportForm(zone.id)}
-                    className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted transition-colors hover:text-accent"
-                  >
-                    Report something here →
-                  </button>
-                </div>
-                {/* A hairline in the status colour, so the list can be scanned
-                    by state without reading a single label. */}
-                <span
-                  className="block h-0.5 w-full opacity-70"
-                  style={{ backgroundColor: theme.hex }}
-                  aria-hidden="true"
-                />
-              </li>
-            )
-          })}
-        </ul>
+                <circle cx="12" cy="12" r="7" />
+                <path strokeLinecap="round" d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+              </svg>
+            </button>
+            <Link
+              to="/admin"
+              className="rounded-md border border-line bg-ink-2/85 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent"
+            >
+              Admin
+            </Link>
+          </>
+        }
+      />
 
-        {zones.length === 0 && zonesReady && (
-          <p className="mt-3 rounded-xl border border-dashed border-line bg-ink-2 p-6 text-center text-sm text-muted">
-            No zones found. Run{' '}
-            <code className="font-mono text-accent">npm run seed</code> to load the
-            Puerto Princesa zones.
-          </p>
-        )}
+      <Legend counts={statusCounts} style={{ opacity: sheet.chromeOpacity }} />
 
-        <section className="mt-8 rounded-xl border border-line bg-ink-2 p-5">
-          <h2 className="font-display text-2xl leading-none text-paper">
-            What is red tide?{' '}
-            <span className="font-sans text-sm font-normal text-faint">
-              / “pula ang dagat”
-            </span>
-          </h2>
-          <p className="mt-3 text-sm leading-relaxed text-muted">
-            A <strong className="text-paper/85">red tide</strong> is a bloom of
-            microscopic algae that can turn seawater reddish-brown, though the
-            water does not always change colour. Some of these organisms produce{' '}
-            <strong className="text-paper/85">saxitoxin</strong>. Shellfish —{' '}
-            <em>tahong</em> (mussels), <em>talaba</em> (oysters), <em>halaan</em>{' '}
-            (clams) and <em>alamang</em> — filter seawater to feed, so the toxin
-            builds up inside them.
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Eating contaminated shellfish causes{' '}
-            <strong className="text-paper/85">
-              Paralytic Shellfish Poisoning (PSP)
-            </strong>
-            . Cooking, boiling or vinegar does{' '}
-            <strong className="text-paper/85">not</strong> destroy the toxin, and
-            there is no antidote. Symptoms usually start within 30 minutes to 2
-            hours: tingling or numbness around the mouth, face and limbs, then
-            difficulty breathing. Severe cases can stop breathing within 12 hours —
-            get to a hospital immediately.
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Fish, squid, shrimp and crab from the same water are generally safe to
-            eat if they are fresh, have their gills and intestines removed, and are
-            washed under running water before cooking.
-          </p>
+      <TideGauge
+        advisory={statusCounts.advisory}
+        zones={zones.length}
+        pending={pendingTotal}
+        style={{ opacity: sheet.chromeOpacity }}
+      />
 
-          <div className="mt-4 rounded-lg border-l-2 border-accent/60 bg-ink-3 p-3">
-            <p className="text-xs font-semibold text-paper/85">
-              This app is a community early-warning tool, not an official advisory.
-            </p>
-            <p className="mt-1 text-xs leading-relaxed text-muted">
-              Only the Bureau of Fisheries and Aquatic Resources (BFAR) can confirm
-              a red tide through laboratory testing. Reports here are reviewed by a
-              local admin and are meant to get a warning out faster, not to replace
-              the BFAR shellfish bulletin.
-            </p>
-          </div>
+      {!zonesReady && <MapLoadingOverlay />}
 
-          <p className="mt-4 font-mono text-[10px] leading-relaxed text-faint">
-            Zone outlines on this map are approximate and drawn for demonstration —
-            they are not official fisheries boundaries.
-          </p>
-        </section>
+      {/* ------------------------------------------------------------------
+          Layer 4: the sheet itself.
+          ------------------------------------------------------------------ */}
+      <ZoneSheet
+        zones={zones}
+        zonesReady={zonesReady}
+        pendingCounts={pendingCounts}
+        counts={statusCounts}
+        selectedZoneId={selectedZoneId}
+        sheet={sheet}
+        onFocusZone={focusZone}
+        onReport={openReportForm}
+      />
 
-        <div className="mt-3">
-          <DemoBanner />
-        </div>
-
-        <footer className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 font-mono text-[10px] uppercase tracking-[0.12em] text-faint">
-          <p>Legend order: {ZONE_STATUS_ORDER.map((status) => status).join(' · ')}</p>
-          <Link to="/admin" className="transition-colors hover:text-accent">
-            Admin review →
-          </Link>
-        </footer>
-      </main>
-
+      {/* ------------------------------------------------------------------
+          Layer 5: modals.
+          ------------------------------------------------------------------ */}
       {heldZone && (
         <ReportForm
           key={heldZone.id}

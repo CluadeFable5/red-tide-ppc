@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { Polygon as LeafletPolygon } from 'leaflet'
 import { MapContainer, Polygon, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet'
 import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, zonesBoundingBox } from '../data/zones'
-import { zoneStatusMeta } from '../lib/status'
+import { zonePaint } from '../styles/statusTheme'
 // `LatLng` here is our own [lat, lng] tuple, which Leaflet accepts directly.
 import type { LatLng, Zone } from '../types'
 import { ZonePopup } from './ZonePopup'
@@ -66,8 +67,225 @@ function FocusZone({ zone, token }: { zone: Zone | null; token: number }) {
 }
 
 /**
+ * Is `target` an SVG `<path>` in the SVG namespace?
+ *
+ * Duck-typed instead of `instanceof SVGPathElement` — jsdom (where the
+ * regression tests run) does not define that global, while `namespaceURI`
+ * and `tagName` are spec'd and stable in every environment.
+ */
+function isZonePath(target: EventTarget | null): target is SVGPathElement {
+  return (
+    target instanceof Element &&
+    target.namespaceURI === 'http://www.w3.org/2000/svg' &&
+    target.tagName === 'path'
+  )
+}
+
+/**
+ * Lights the polygon under the pointer from the moment the press starts.
+ *
+ * Thin SVG strokes have a slow `fill-opacity` ramp (200ms, see index.css), and
+ * the whole point of that ramp is that it plays *before* the popup opens. On
+ * mouse it does: `mouseover` arrives well ahead of `click`. On touch it does
+ * not — Leaflet's container listens for mouse events only, so a tap is
+ * delivered as a synthesised mouseover/mousedown/mouseup/click burst at
+ * `touchend`, 110ms+ after the finger actually landed. Measured in this app:
+ * touchdown t=18ms, the layer's first event t=131ms.
+ *
+ * So the press state comes from the native `pointerdown`, which does fire with
+ * the touch. The listener is delegated on the map container and runs in the
+ * capture phase, so it cannot be affected by — and cannot affect — Leaflet's
+ * own event plumbing. It only toggles a class; the ramp stays in CSS.
+ *
+ * A press that turns into a pan is released as soon as the pointer travels past
+ * the slop, so dragging the map across a polygon does not leave it lit.
+ */
+function ZonePressFeedback() {
+  const map = useMap()
+
+  useEffect(() => {
+    const container = map.getContainer()
+    let pressed: SVGPathElement | null = null
+    let origin: { x: number; y: number } | null = null
+
+    function cleanup() {
+      pressed?.classList.remove('zone-path--pressed')
+      pressed = null
+      origin = null
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', cleanup)
+      window.removeEventListener('pointercancel', cleanup)
+    }
+
+    function onPointerMove(event: PointerEvent) {
+      if (!origin) return
+      // A few pixels of finger jitter must not cancel the press; anything
+      // further is a map pan, not a tap.
+      if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 10) {
+        cleanup()
+      }
+    }
+
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target
+      if (!isZonePath(target)) return
+      if (!target.classList.contains('zone-path')) return
+      cleanup()
+      pressed = target
+      origin = { x: event.clientX, y: event.clientY }
+      target.classList.add('zone-path--pressed')
+      window.addEventListener('pointermove', onPointerMove)
+      window.addEventListener('pointerup', cleanup)
+      window.addEventListener('pointercancel', cleanup)
+    }
+
+    container.addEventListener('pointerdown', onPointerDown, { capture: true })
+    return () => {
+      container.removeEventListener('pointerdown', onPointerDown, { capture: true })
+      cleanup()
+    }
+  }, [map])
+
+  return null
+}
+
+/**
+ * One zone polygon, with its selection modifier kept in sync imperatively.
+ *
+ * WHY THE CLASS APPLICATION IS SPLIT IN TWO
+ * -----------------------------------------
+ * `className="zone-path"` is a *constructor* prop: Leaflet's SVG renderer
+ * reads `options.className` exactly once, in `_initPath`, when the path node
+ * is created as the layer is added to the map. It never re-applies it — and
+ * react-leaflet applies `pathOptions` via `setStyle` *after* the layer exists,
+ * and `setStyle` only writes stroke/fill presentation attributes, never the
+ * class. So `pathOptions.className` (the old code) silently never reached the
+ * DOM in a production single-pass render: it only appeared in dev because
+ * StrictMode's double effect invocation re-added the layer, re-running
+ * `_initPath` against options that the first `setStyle` had already stored.
+ * That is the regression `Map.test.tsx` guards.
+ *
+ * The `--selected` modifier can't be a constructor prop (it changes over the
+ * layer's life), so it is toggled on the path element directly from a layer
+ * ref. In the normal single pass the path already exists by the time this
+ * component's effect runs (children's effects commit before the parent's),
+ * but on StrictMode remounts — and any map remount — Leaflet creates a fresh
+ * path node: the base class comes back from the constructor options, the
+ * imperative modifier does not, so the `add` subscription re-applies it.
+ */
+function ZonePolygon({
+  zone,
+  isSelected,
+  isHovered,
+  onSelectZone,
+  onHover,
+  onLeave,
+  pendingCount,
+  onReport,
+}: {
+  zone: Zone
+  isSelected: boolean
+  isHovered: boolean
+  onSelectZone: (zoneId: string) => void
+  onHover: (zoneId: string) => void
+  onLeave: (zoneId: string) => void
+  pendingCount: number
+  onReport: (zoneId: string) => void
+}) {
+  const layerRef = useRef<LeafletPolygon | null>(null)
+  const selectedRef = useRef(isSelected)
+  selectedRef.current = isSelected
+
+  const syncSelectedClass = () => {
+    const el = layerRef.current?.getElement()
+    if (el) el.classList.toggle('zone-path--selected', selectedRef.current)
+  }
+
+  useEffect(() => {
+    const layer = layerRef.current
+    if (!layer) return
+    // Path not created yet (map not added) — the `add` listener applies it
+    // the moment it is.
+    syncSelectedClass()
+    layer.on('add', syncSelectedClass)
+    return () => {
+      layer.off('add', syncSelectedClass)
+    }
+  }, [])
+
+  useEffect(() => {
+    syncSelectedClass()
+  }, [isSelected])
+
+  const paint = zonePaint(zone.status)
+
+  return (
+    <Polygon
+      ref={layerRef}
+      positions={zone.polygon}
+      // Constructor prop — applied by Leaflet when the path is created.
+      className="zone-path"
+      pathOptions={{
+        color: paint.hex,
+        fillColor: paint.hex,
+        weight: isSelected ? paint.weightSelected : paint.weight,
+        opacity: 0.95,
+        // The ramp itself. Leaflet writes these as attributes and the
+        // transition on `.zone-path` does the interpolating — see
+        // `zonePaint` in styles/statusTheme.ts for why it is a sequence.
+        fillOpacity: isSelected
+          ? paint.fillSelected
+          : isHovered
+            ? paint.fillHover
+            : paint.fill,
+        dashArray: paint.dashArray,
+      }}
+      eventHandlers={{
+        click: () => onSelectZone(zone.id),
+        mouseover: () => onHover(zone.id),
+        mouseout: () => onLeave(zone.id),
+      }}
+    >
+      <Popup
+        // The class lands on Leaflet's `.leaflet-popup` container and is
+        // what lets index.css tint the card, tip and glow per status.
+        className={`zone-popup zone-popup--${zone.status}`}
+        maxWidth={340}
+        minWidth={260}
+        autoPanPadding={[16, 16]}
+      >
+        <ZonePopup
+          zone={zone}
+          pendingCount={pendingCount}
+          onReport={() => onReport(zone.id)}
+        />
+      </Popup>
+    </Polygon>
+  )
+}
+
+/**
  * The public map: one Leaflet polygon per zone, coloured by status, with a
  * popup that carries the "Report something here" call to action.
+ *
+ * THE BASE LAYER
+ * --------------
+ * This component is the map page's persistent base layer: it is mounted once,
+ * behind the sheet, and never unmounts as the sheet moves. Leaflet measures its
+ * container on mount and positions every pane with transforms, so the only thing
+ * allowed to transform it is the *underlay wrapper* in MapPage — and that wrapper
+ * deliberately starts at `scale(1)` at the peek anchor, so the initial
+ * measurement happens on an untransformed box. Leaflet 1.9's `getScale()` reads
+ * `getBoundingClientRect()` against `offsetWidth`, so a scaled container still
+ * maps pointer coordinates correctly once it does recede.
+ *
+ * ATTRIBUTION
+ * -----------
+ * `attributionControl={false}`: the control is pinned to the bottom-right of the
+ * map, which is underneath the sheet at every anchor. OSM attribution is a
+ * licence requirement, so it lives on the sheet instead: a compact `© OSM` link
+ * in the always-visible peek row, with the full credit in the sheet footer
+ * (ZoneSheet.tsx).
  */
 export function Map({
   zones,
@@ -88,6 +306,14 @@ export function Map({
     [zones, focusZoneId],
   )
 
+  // Hover drives the polygon's fill up a step so the popup lands on a lit
+  // polygon. On a phone this alone is not enough: Leaflet forwards only *mouse*
+  // events to layers, so a tap delivers mouseover, mousedown and click in one
+  // batch when the finger lifts (measured within 4ms of each other, ~113ms after
+  // touchdown) and the ramp has no head start. `<ZonePressFeedback/>` covers
+  // that window from the native `pointerdown`.
+  const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null)
+
   return (
     <MapContainer
       center={MAP_CENTER}
@@ -98,6 +324,7 @@ export function Map({
       // index.css): the header overlay occupies the top of the screen, and
       // pinch-zoom is the expected gesture on a touch device anyway.
       zoomControl={false}
+      attributionControl={false}
       className="h-full w-full"
     >
       <ZoomControl position="topright" />
@@ -108,44 +335,23 @@ export function Map({
 
       <FitToBounds box={box} resetToken={resetToken} />
       <FocusZone zone={focusZone} token={focusToken} />
+      <ZonePressFeedback />
 
-      {zones.map((zone) => {
-        const meta = zoneStatusMeta(zone.status)
-        const isSelected = zone.id === selectedZoneId
-
-        return (
-          <Polygon
-            key={zone.id}
-            positions={zone.polygon}
-            pathOptions={{
-              color: meta.hex,
-              fillColor: meta.hex,
-              weight: isSelected ? 4 : 2,
-              opacity: 0.95,
-              fillOpacity: isSelected ? 0.5 : 0.28,
-              dashArray: zone.status === 'unconfirmed' ? '6 5' : undefined,
-            }}
-            eventHandlers={{
-              click: () => onSelectZone(zone.id),
-            }}
-          >
-            <Popup
-              // The class lands on Leaflet's `.leaflet-popup` container and is
-              // what lets index.css tint the card, tip and glow per status.
-              className={`zone-popup zone-popup--${zone.status}`}
-              maxWidth={340}
-              minWidth={260}
-              autoPanPadding={[16, 16]}
-            >
-              <ZonePopup
-                zone={zone}
-                pendingCount={pendingCounts[zone.id] ?? 0}
-                onReport={() => onReport(zone.id)}
-              />
-            </Popup>
-          </Polygon>
-        )
-      })}
+      {zones.map((zone) => (
+        <ZonePolygon
+          key={zone.id}
+          zone={zone}
+          isSelected={zone.id === selectedZoneId}
+          isHovered={zone.id === hoveredZoneId}
+          onSelectZone={onSelectZone}
+          onHover={setHoveredZoneId}
+          onLeave={(zoneId) =>
+            setHoveredZoneId((current) => (current === zoneId ? null : current))
+          }
+          pendingCount={pendingCounts[zone.id] ?? 0}
+          onReport={onReport}
+        />
+      ))}
     </MapContainer>
   )
 }
