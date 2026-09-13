@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route } from 'react-router-dom'
+import { RouteTransition } from './motion/RouteTransition'
 import { Admin } from './pages/Admin'
 import { MapPage } from './pages/MapPage'
 import { useAppStore } from './store'
@@ -12,11 +13,16 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
+      {/*
+        The route table is unchanged — only wrapped. `RouteTransition` renders
+        the <Routes> itself, so it can pin the outgoing tree to the outgoing
+        location while it fades out.
+      */}
+      <RouteTransition>
         <Route path="/" element={<MapPage />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      </RouteTransition>
     </BrowserRouter>
   )
 }
