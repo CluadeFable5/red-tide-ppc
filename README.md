@@ -199,8 +199,9 @@ src/
     zones.ts              # the six pre-seeded zones + polygon helper
   lib/
     backend.ts            # Backend contract + which implementation to use
-    backend.firebase.ts   # Firestore + Storage implementation
+    backend.firebase.ts   # Firestore + Storage plumbing
     backend.demo.ts       # in-memory / localStorage implementation
+    firestoreMapping.ts   # Firestore doc → domain type (pure, unit-tested)
     firebase.ts           # Firebase bootstrap + env parsing
     status.ts             # status → colour / label / guidance (single source)
     format.ts             # date + relative time + byte formatting (PHT)
@@ -298,11 +299,30 @@ Before this is used for real public-health decisions, replace them with the actu
 npm test
 ```
 
-23 tests in three files:
+66 tests across five files:
 
-- **`src/store.test.ts`** — the real store against the real (in-memory) backend: seeded zones load `safe`; `submitReport` writes a pending report; short descriptions are refused; `approveReport` confirms the report **and** flips the zone to `advisory`; `rejectReport` leaves the zone untouched; manual revert to `safe` works; pending counts are right; the passcode gate only unlocks on an exact match.
-- **`src/App.test.tsx`** — the whole loop rendered in jsdom: map → tap a zone → report → `/admin` → wrong passcode rejected → correct passcode → Approve → zone turns advisory → public map shows the advisory. Plus a photo attachment run end to end.
-- **`src/data/zones.test.ts`** — polygon sanity: unique ids, plausible coordinates inside the Puerto Princesa box, the two Honda Bay zones do not overlap, bounding box contains every vertex.
+- **`src/App.test.tsx`** (4, jsdom) — the whole loop rendered for real: map → tap a zone → report → `/admin` → wrong passcode rejected → correct passcode → Approve → zone turns advisory → public map shows the advisory. Plus a photo attachment run end to end, and a check that a too-short report submits nothing.
+- **`src/store.test.ts`** (13) — the real store against the real (in-memory) backend: seeded zones load `safe`; `submitReport` writes a pending report; short descriptions are refused; `approveReport` confirms the report **and** flips the zone to `advisory`; `rejectReport` leaves the zone untouched; manual revert to `safe` works; pending counts are right; the passcode gate only unlocks on an exact match.
+- **`src/lib/firestoreMapping.test.ts`** (20) — the production-only path: Timestamps, GeoPoints and unresolved `serverTimestamp()` values, typos in `status`, half-written documents, and Storage filename sanitising (including path traversal).
+- **`src/lib/firebase.test.ts`** (23) — `readFirebaseConfig` returns a config only when all six keys are real, so a half-filled `.env` falls back to demo mode instead of half-initialising Firebase.
+- **`src/data/zones.test.ts`** (6) — polygon sanity: unique ids, plausible coordinates inside the Puerto Princesa box, the two Honda Bay zones do not overlap, bounding box contains every vertex.
+
+The Firestore mapping tests matter because that code only runs against a real project — the demo backend never touches it.
+
+---
+
+## 14. Making common changes
+
+| I want to… | Touch this |
+| --- | --- |
+| **Add or edit a zone** | `src/data/zones.ts` → then `npm run seed -- --force` to push it. In demo mode, clear `localStorage` to re-seed. |
+| **Replace the polygons with real boundaries** | Same file. `polygon` accepts `[lat, lng]` pairs; the mapper also tolerates `{latitude, longitude}` GeoPoints entered in the console. |
+| **Change a status colour** | `src/lib/status.ts` (`hex` is what Leaflet draws) **and** the `@theme` block in `src/index.css` — they are duplicated on purpose and must be kept in sync. |
+| **Change the advisory wording** | `guidance` in `src/lib/status.ts`; the long explainer is in `src/pages/MapPage.tsx`. |
+| **Change report validation limits** | `MIN/MAX_DESCRIPTION_LENGTH` in `src/store.ts`; the 2000-character cap is mirrored in `firestore.rules`. |
+| **Change the photo size limit** | `MAX_PHOTO_BYTES` in `src/lib/image.ts`, mirrored in `storage.rules`. |
+| **Tighten security** | `firestore.rules` + `storage.rules`, then `firebase deploy --only firestore:rules,storage`. Replacing the passcode means adding Firebase Auth and gating `Admin.tsx` on it. |
+| **Add a new admin action** | Add the action to `src/store.ts` (all datastore calls live there) and call it from `src/pages/Admin.tsx`. |
 
 ---
 
