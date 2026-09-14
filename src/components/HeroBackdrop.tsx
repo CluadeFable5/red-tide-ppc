@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useReducedMotion } from 'motion/react'
 
 /**
@@ -64,6 +64,28 @@ function StaticBackdrop() {
   )
 }
 
+/**
+ * Feather mask applied to the whole backdrop.
+ *
+ * The hero panel is as wide as the content column, so without this its left
+ * and right edges are a hard vertical cut against the page ground — measured
+ * in a real browser at an 11.17/255 luminance step at x=304, clearly visible
+ * as a rectangle of lighter background behind the headline. The horizontal
+ * pass feathers both sides, the vertical pass fades the bottom into the page.
+ */
+const FEATHER_MASK = [
+  'linear-gradient(to right, transparent 0, black 18%, black 82%, transparent 100%)',
+  'linear-gradient(to bottom, black 0, black 62%, transparent 100%)',
+].join(', ')
+
+/** The two mask passes must intersect, so both edges feather. */
+const featherStyle: CSSProperties = {
+  maskImage: FEATHER_MASK,
+  WebkitMaskImage: FEATHER_MASK,
+  maskComposite: 'intersect',
+  WebkitMaskComposite: 'source-in',
+}
+
 export function HeroBackdrop({ className = '' }: { className?: string }) {
   const reduceMotion = useReducedMotion()
   const ref = useRef<HTMLDivElement | null>(null)
@@ -111,9 +133,14 @@ export function HeroBackdrop({ className = '' }: { className?: string }) {
       (entries) => {
         for (const entry of entries) setVisible(entry.isIntersecting)
       },
-      // A small positive margin resumes it just before it scrolls back in, so
-      // the fluid is already moving when the user reaches the top again.
-      { threshold: 0, rootMargin: '100px' },
+      // NO positive rootMargin. It was '100px', which measured as a real bug:
+      // the landing page at 1280x800 is only ~537px of scroll, so a fully
+      // scrolled-out hero still sits at bottom=-88px — inside a 100px margin,
+      // so the observer never reported it as hidden and the shader ran for the
+      // entire visit on desktop. Pausing exactly at the viewport edge costs
+      // nothing visually: the canvas keeps its last frame while paused, so
+      // resuming is not a pop.
+      { threshold: 0, rootMargin: '0px' },
     )
     observer.observe(element)
     return () => observer.disconnect()
@@ -131,7 +158,11 @@ export function HeroBackdrop({ className = '' }: { className?: string }) {
   // so `ogl` is never fetched and no GL context is ever created.
   if (reduceMotion) {
     return (
-      <div aria-hidden="true" className={`pointer-events-none absolute inset-0 ${className}`}>
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute inset-0 ${className}`}
+        style={featherStyle}
+      >
         <StaticBackdrop />
       </div>
     )
@@ -148,6 +179,7 @@ export function HeroBackdrop({ className = '' }: { className?: string }) {
       aria-hidden="true"
       data-testid="hero-backdrop"
       className={`pointer-events-none absolute inset-0 ${className}`}
+      style={featherStyle}
     >
       <StaticBackdrop />
 
@@ -181,11 +213,9 @@ export function HeroBackdrop({ className = '' }: { className?: string }) {
       ) : null}
 
       {/*
-        Bottom fade. The hero backdrop must not bleed into the "How it works"
-        section or the stat cards — this dissolves it into the page ground at
-        the panel's edge.
+        The bottom fade is part of FEATHER_MASK (the vertical pass), so the
+        panel dissolves into the page ground rather than ending on an edge.
       */}
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-ink" />
     </div>
   )
 }

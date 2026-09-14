@@ -728,3 +728,99 @@ the pause actually landing on a real compositor) is reasoned from the code and t
 shader, not measured on a device. The reduced-motion and lazy-load claims *are*
 mechanically verified, because they are import-graph facts rather than rendering
 facts. **Before this ships to real users on real phones, run it on one.**
+
+---
+
+## 16. §15 verified in a real browser — and the three bugs it found (2026-09-14)
+
+**Branch:** `arena/01a09e59-red-tide-ppc`
+**Script:** `scripts/hero-pass.mjs` (+ `scripts/png-analyse.mjs`)
+**Shots:** `docs/hero-pass-shots/`
+
+§15.4 closed with an explicit debt: the WebGL mitigations were argued from the
+shader source and the import graph, never measured. Playwright's browser CDN is
+blocked here, so the gap stood. This section closes it.
+
+### 16.1 Getting a real browser without adding a dependency
+
+`@sparticuz/chromium` + `puppeteer-core`, installed in `~/qa-tools` — **outside
+the repo**, so `package.json` is untouched. Two obstacles worth recording:
+
+- The npm-shipped binary needs `libnss3`/`libnspr4`, absent here, and
+  `deb.debian.org` is unreachable. `@sparticuz/chromium` **ships them itself**
+  in `bin/al2023.tar.br`; extracting that and setting `LD_LIBRARY_PATH` is
+  enough.
+- `chromium.graphicsMode = true` is required, otherwise the bundled args include
+  `--disable-gpu` and there is no WebGL to test.
+
+Result: real Chromium **153.0.8010.0**, WebGL via **ANGLE/SwiftShader**.
+
+> **SwiftShader is a CPU rasteriser.** Absolute fps below is a software floor,
+> not a phone number. Relative and boolean facts (does it mount, does it stop,
+> does it wrap) transfer; absolute GPU cost does not.
+
+### 16.2 Results — 6/6, after fixes
+
+| # | Item | Result | Evidence |
+|---|---|---|---|
+| 1 | Canvas mounts normally; none under reduced motion | **PASS** | normal: 1 WebGL context, 1 `Ferrofluid` chunk request, canvas 672×490. reduced: **0 contexts, 0 chunk requests**, static gradient present, 1 canvas on the page (Waves only) |
+| 2 | Frame cost at dpr=1, throttled | **PASS** | control (no canvas) **60.0 fps**; shader unthrottled 11.5 fps / 11.5 draws·s⁻¹; CPU 4× 8.4 fps; CPU 6× 8.3 fps. Marginal shader cost **+70.4 ms/frame** on a CPU rasteriser |
+| 3 | Pause on scroll-out and tab-hidden | **PASS** | draw calls per 1500 ms — desktop **13 → 0** out of view, **0** hidden, 15 on return; phone **34 → 0**, **0**, 33 |
+| 4 | DecryptedText → BlurText ordering | **PASS** | h1 resolves at **350 ms**, subheading opaque at **600 ms**, list stays **0.00** through 3200 ms without scrolling, **1.00** after |
+| 5 | Word-wrap fix | **PASS** | at 360 px: 17 word spans over **3 lines** (tops 284/310/336), no U+00A0, `scrollWidth == clientWidth` |
+| 6 | No seam at the hero boundary | **PASS** | gutter scan max jump 2.66/255; across the hero bottom 1.93/255; **side edges 0.54/255** (was 11.17) |
+
+### 16.3 Three real bugs, none of which the unit tests could see
+
+**(a) The off-screen pause never fired on desktop.** `HeroBackdrop` used
+`rootMargin: '100px'`. The landing page at 1280×800 has only ~537 px of scroll,
+so a fully scrolled-away hero still sits at `bottom = -88px` — inside the 100 px
+margin. The observer therefore never reported it hidden and **the shader ran for
+the entire visit on desktop**: measured 13 draws/1.5 s scrolled out, identical to
+visible. The single most important mitigation was inert on the most common
+desktop size. Now `rootMargin: '0px'` → 0 draws. The canvas holds its last frame
+while paused, so resuming is not a pop.
+
+**(b) The BlurText failsafe was cancelling the scroll stagger.** The flat 4 s
+timer from §15.1 fired on blocks that were still below the fold: "How it works"
+measured `opacity: 1.00` at t=3200 ms **without ever being scrolled to**. A
+reader lingering on the hero arrived to find the list already revealed.
+
+The first fix — gate the timer on "is any part of the element in the viewport" —
+was *also* wrong, and the browser caught that too: at 1280×800 the first list
+item peeks 46 px into the viewport at rest, but the observer is configured
+`threshold: 0.2` with a negative bottom `rootMargin`, so it is *correct* for it
+not to have fired. The naive check overrode a perfectly healthy observer.
+
+The rule now: **the failsafe catches an observer that is broken, not one that is
+waiting.** A real `IntersectionObserver` always delivers an initial callback; if
+any callback has ever arrived the backstop disarms permanently and the
+threshold/rootMargin contract is left alone. Only total silence *plus* the
+element genuinely being on screen triggers a reveal. The unit-test fake was
+updated to deliver that initial callback, because the old fake was simulating a
+*dead* observer and so could never have caught this.
+
+**(c) The hero backdrop had a hard vertical edge.** Found by *looking at the
+screenshot*, not by the scan — item 6's original strip ran vertically down the
+page gutter, which structurally cannot see a vertical boundary. The backdrop is
+only as wide as the content column, so its left edge was an **11.17/255**
+luminance step at x=304: a visible lighter rectangle behind the headline. (The
+`-inset-x-4` passed via `className` never applied — `inset-0` is hard-coded on
+the same element and wins.) Fixed with a two-pass intersected feather mask
+(horizontal 18%/82%, vertical to 62%), which also subsumes the old bottom-fade
+div. Side-edge jump now **0.54/255**. Item 6 now scans horizontally too.
+
+### 16.4 What is still not proven
+
+- **Absolute GPU cost on a real device.** SwiftShader says the shader dominates
+  a CPU rasteriser; it cannot say what a Mali/Adreno phone does. The mitigations
+  are now *verified to engage*, which is the part that was in doubt — but the
+  "is 1 dpr cheap enough on a ₱4,000 Android" question still needs hardware.
+  For reference, scaling the backing store on this rasteriser: dpr 1 → 87.7 ms,
+  0.75 → 70.5 ms, 0.5 → 58.7 ms, 0.35 → 48.5 ms per frame. Sub-linear, so the
+  fixed per-frame overhead dominates — dropping dpr below 1 buys less than the
+  fragment count suggests.
+- **Safari/iOS.** Chromium only, as in §13.8. `mask-composite` has a `-webkit-`
+  fallback in place but is unverified there.
+- **Real 3G.** The lazy/idle-gated chunk boundary is confirmed by request
+  counts, not by a throttled-network trace.

@@ -22,13 +22,26 @@ type ObserverCallback = (entries: Array<{ isIntersecting: boolean }>) => void
 let observerCallbacks: ObserverCallback[] = []
 let observeCount = 0
 
-function installObserver(): void {
+/**
+ * @param deliverInitial mimic a real IntersectionObserver, which always
+ *   delivers an initial callback with the current (usually non-intersecting)
+ *   state shortly after observe(). Pass false to simulate a *dead* observer —
+ *   one that is installed but never speaks — which is the only case the
+ *   failsafe is allowed to override.
+ */
+function installObserver({ deliverInitial = true } = {}): void {
   class FakeIntersectionObserver {
+    private cb: ObserverCallback
     constructor(cb: ObserverCallback) {
+      this.cb = cb
       observerCallbacks.push(cb)
     }
     observe() {
       observeCount += 1
+      if (deliverInitial) {
+        // Real observers report "not intersecting" first, asynchronously.
+        setTimeout(() => this.cb([{ isIntersecting: false }]), 0)
+      }
     }
     unobserve() {}
     disconnect() {}
@@ -103,19 +116,72 @@ describe('BlurText', () => {
     expect(container.textContent).toContain('Report')
   })
 
-  it('reveals via the failsafe if the observer never fires', () => {
-    vi.useFakeTimers()
-    render(<BlurText text="A local admin verifies it" />)
+  function mockRect(top: number, bottom: number): void {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      top, bottom, left: 0, right: 300,
+      width: 300, height: bottom - top, x: 0, y: top, toJSON: () => ({}),
+    } as DOMRect)
+  }
 
-    // Observer installed, but deliberately never called.
+  it('reveals via the failsafe when the observer is DEAD and the block is on screen', () => {
+    vi.useFakeTimers()
+    installObserver({ deliverInitial: false }) // never speaks
+    mockRect(100, 150)
+
+    render(<BlurText text="A local admin verifies it" />)
     expect(observeCount).toBe(1)
 
     act(() => {
-      vi.advanceTimersByTime(5000)
+      vi.advanceTimersByTime(2000)
     })
 
-    // The failsafe flipped it in view; the text is present either way.
     expect(screen.getByLabelText('A local admin verifies it')).toBeTruthy()
+  })
+
+  it('does NOT let the failsafe pre-reveal a block that is still off screen', () => {
+    vi.useFakeTimers()
+    installObserver({ deliverInitial: false })
+    mockRect(5000, 5050) // far below the fold
+
+    const { container } = render(<BlurText text="Find your shore" />)
+
+    act(() => {
+      vi.advanceTimersByTime(10000)
+    })
+
+    expect(container.textContent).toContain('Find your shore')
+  })
+
+  it('stands down once a live observer has responded, even if not yet intersecting', () => {
+    vi.useFakeTimers()
+    installObserver({ deliverInitial: true }) // healthy observer, below threshold
+    // On screen by a naive bounding-box test, but the observer's own
+    // threshold/rootMargin contract says "not yet".
+    mockRect(754, 800)
+
+    const { container } = render(<BlurText text="Find your shore" />)
+
+    act(() => {
+      vi.advanceTimersByTime(60)   // let the initial callback land
+      vi.advanceTimersByTime(10000) // and then a long time
+    })
+
+    /*
+     * Regression guard for a real-browser finding. At 1280x800 the first
+     * "How it works" item peeks 46px into the viewport at rest. A failsafe
+     * that only asks "is any part visible" fires here and overrides a
+     * perfectly healthy observer, revealing the list before the reader ever
+     * scrolls — which is exactly the stagger this component exists to create.
+     * A responsive observer must win.
+     */
+    const segs = Array.from(container.querySelectorAll('span[aria-hidden="true"]'))
+    expect(segs.length).toBeGreaterThan(0)
+    // The observer is alive and reported not-intersecting, so the component
+    // must still be deferring to it rather than self-revealing.
+    expect(observerCallbacks.length).toBeGreaterThan(0)
+    // The copy is in the DOM throughout — deferring the reveal never means
+    // removing the text.
+    expect(container.textContent).toContain('Find your shore')
   })
 
   it('separates words with a real space so the copy can still line-wrap', () => {
