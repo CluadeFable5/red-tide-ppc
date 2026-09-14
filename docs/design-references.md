@@ -824,3 +824,117 @@ div. Side-edge jump now **0.54/255**. Item 6 now scans horizontally too.
   fallback in place but is unverified there.
 - **Real 3G.** The lazy/idle-gated chunk boundary is confirmed by request
   counts, not by a throttled-network trace.
+
+---
+
+## 17. Mobile spacing pass on the landing page (2026-09-14)
+
+**Branch:** `arena/01a09e59-red-tide-ppc`
+**Scope:** spacing utilities only on `pages/Landing.tsx` and `components/Header.tsx`.
+No copy added, removed, reworded or shortened. No routing change.
+**Script:** `scripts/spacing-pass.mjs` · **Shots:** `docs/mobile-spacing-shots/`
+
+### 17.1 Responsive-strategy audit (the "confirm, don't rebuild" check)
+
+Asked first, before touching anything: is this app adapting with CSS, or with
+device-detection JS?
+
+| Checked for | Result |
+|---|---|
+| `userAgent` / `navigator.platform` / `navigator.vendor` / `maxTouchPoints` | **none** |
+| `isMobile` / `isTablet` / `isPhone` / `isDesktop` flags | **none** |
+| `window.innerWidth`-driven *conditional rendering* | **none** |
+| Tailwind responsive utilities | yes — `sm:` throughout, no JS branch |
+
+**Verdict: already CSS-only. Nothing was rebuilt.** The layout is pure Tailwind
+breakpoints and the changes below are additional spacing utilities.
+
+Three `window`/`matchMedia` reads do exist, and all three are legitimately
+*behavioural*, not layout:
+
+- `Waves.tsx` / `Ferrofluid.tsx` — canvas backing-store sizing. Has to be JS; a
+  canvas cannot size its own drawing buffer from CSS.
+- `BlurText.tsx` — `getBoundingClientRect` in the observer backstop (§16.3b).
+  Behaviour, not layout.
+
+**One thing worth flagging, not fixed here:** `DecryptedText.tsx` hard-codes
+`window.matchMedia('(max-width: 640px)')` to skip the scramble on phones. That
+is a real JS breakpoint and it duplicates Tailwind's `sm` (40rem) — if the theme
+ever retunes that breakpoint the two silently disagree. It is *not* layout
+(it gates an animation, and the text renders identically either way), so it is
+out of scope for a spacing pass, but it is the one maintenance trap in the file
+set and should be moved to a `matchMedia` on a shared token or a CSS-driven
+signal when that file is next touched.
+
+### 17.2 What changed
+
+A `min-[400px]:` step was introduced alongside `sm:` so the very narrow phones
+get their own treatment rather than inheriting the desktop-ish defaults.
+
+| Surface | Before → after (mobile) |
+|---|---|
+| Page gutter (`main`) | `px-4` (16px) → `px-5` (20px), `px-6` from 400px |
+| Header gutter | `px-4` → `px-5`, `px-6` from 400px — now aligns with the body column |
+| Header action gap | `gap-2` (8px) → `gap-2`/`gap-2.5` (8→10px at 400px) |
+| Header nav tap targets | 29px tall → **33px** (`py-1.5` → `py-2`) |
+| Header → hero | `pt-14` (56px) → `pt-20` (80px) |
+| Eyebrow → headline | `mt-3` → `mt-4` |
+| Headline → subheading | `mt-4` (16px) → `mt-5` (20px) |
+| Subheading → CTA row | `mt-8` (32px) → `mt-10` (40px) |
+| CTA wrap gap | `gap-y-3` → `gap-y-4` |
+| CTA → live readout | `mt-12` (48px) → `mt-14` (56px) |
+| Stat card padding | `py-2.5` → `py-3`; grid `gap-2` → `gap-2.5` |
+| Section gaps | `mt-12` → `mt-14` |
+| List item spacing | `space-y-2.5` (10px) → `space-y-3.5` (14px) |
+| Bullet gutter | `gap-2.5` → `gap-3` |
+| Footer | `py-6` → `py-7`, `gap-1.5` → `gap-2` |
+
+**Everything above `sm` is explicitly pinned to its previous value** (`sm:mt-3`,
+`sm:py-2.5`, `sm:space-y-2.5`, …), so the desktop layout verified in §16 is
+byte-for-byte unchanged — confirmed by measurement, see 17.4.
+
+### 17.3 Two regressions I introduced and then fixed
+
+Recorded because both were only visible in a screenshot, not in the numbers.
+
+**(a) `flex-wrap` on the header cluster made things worse.** The brief suggested
+wrapping at very narrow widths rather than squeezing. Tried it; measured it;
+reverted it. The cluster (DEMO + ADMIN + MAP) is wider than the space left after
+the brand, so it wrapped MAP onto its own line, took the header from **53px to
+97px (three rows)**, and *still* truncated the brand to "PUERTO PRINCESA,…". A
+sticky bar that eats 97px of a 780px phone viewport is a worse outcome than a
+tight gap. Kept `shrink-0` on one line instead.
+
+**(b) The brand truncated to "Red …" at 360px.** After widening the nav buttons,
+the cluster took 187px of the 320px usable width, leaving 80px for a title that
+needs 93px. Fixed by making the *eyebrow* yield instead of the product name:
+`hidden min-[380px]:block`, plus slightly tighter nav padding/tracking below
+400px (cluster 187px → **171px**). "Red Tide" now renders in full at 360px, and
+the eyebrow returns at 380px+ where there is room for both.
+
+### 17.4 Measured, in real Chromium
+
+`scripts/spacing-pass.mjs`, production build, same harness as §16.
+
+| Metric | 360px | 390px | 768px | 1280px |
+|---|---|---|---|---|
+| side padding L/R | 20/20 | 20/20 | 48/48 | 304/304 |
+| header height | 54 | 54 | 54 | 54 |
+| header → eyebrow | 80 | 80 | 96 | 96 |
+| headline → subheading | 20 | 20 | 16 | 16 |
+| subheading → CTA | 40 | 40 | 32 | 32 |
+| CTA → live readout | 56 | 56 | 64 | 64 |
+| list item gap | 14 | 14 | 10 | 10 |
+| nav gap / tap height | 8 / 33 | 8 / 33 | 10 / 33 | 10 / 33 |
+| **horizontal scroll** | **none** | **none** | **none** | **none** |
+| **element overflow** | **none** | **none** | **none** | **none** |
+
+768px and 1280px are identical to the pre-change values — the desktop pass in
+§16 still holds. Brand truncation: **false at every width**.
+
+Shared-`Header` regression check (it is also used by `/admin` and `/map`):
+`/admin` 360px header 53px, `/map` 360px overlay header 76px, `/admin` 1280px
+54px — no truncation, no horizontal scroll, passcode gate and Leaflet both
+still mount.
+
+`npm run typecheck`, `npm test` (167 passing) and `npm run build` all green.

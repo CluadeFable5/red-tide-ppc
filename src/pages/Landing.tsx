@@ -94,13 +94,13 @@ export function Landing() {
               <DemoBanner variant="chip" />
               <Link
                 to="/admin"
-                className="rounded-md border border-line bg-ink-2/85 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper/75 transition-colors hover:border-accent/40 hover:text-accent"
+                className="rounded-md border border-line bg-ink-2/85 px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-paper/75 transition-colors hover:border-accent/40 hover:text-accent min-[400px]:px-3 min-[400px]:tracking-[0.12em] sm:px-2.5 sm:py-1.5"
               >
                 Admin
               </Link>
               <Link
                 to="/map"
-                className="rounded-md border border-line bg-ink-2/85 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper/75 transition-colors hover:border-accent/40 hover:text-accent"
+                className="rounded-md border border-line bg-ink-2/85 px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-paper/75 transition-colors hover:border-accent/40 hover:text-accent min-[400px]:px-3 min-[400px]:tracking-[0.12em] sm:px-2.5 sm:py-1.5"
               >
                 Map
               </Link>
@@ -108,15 +108,27 @@ export function Landing() {
           }
         />
 
-        <main className="mx-auto w-full max-w-2xl flex-1 px-4 sm:px-6">
+        {/*
+          Horizontal gutter. 20px at the narrowest widths so body copy and the
+          CTA are not flush against the bezel on a 360px phone (it was 16px),
+          easing to 24px once there is room. `px-6` from `sm` up is unchanged.
+        */}
+        <main className="mx-auto w-full max-w-2xl flex-1 px-5 min-[400px]:px-6 sm:px-6">
           {/* ---------------------------------------------------------- hero */}
           {/*
             `relative` + the absolutely-positioned backdrop is what contains
             the WebGL panel to the hero: it is sized by this section, not by
             the page, so it never sits behind the figures or "How it works".
           */}
-          <section className="relative pt-14 sm:pt-24">
-            <HeroBackdrop className="-inset-x-4 -top-24 bottom-0 sm:-inset-x-6" />
+          <section className="relative pt-20 sm:pt-24">
+            {/*
+              Bleeds past the page gutter so the panel reaches the screen edge;
+              tracks `main`'s padding (20px / 24px). Note these -inset-x-*
+              values are inert while `HeroBackdrop` hard-codes `inset-0` — the
+              feather mask (§16.3c) is what actually softens the side edges —
+              but they are kept in sync so the intent stays readable.
+            */}
+            <HeroBackdrop className="-inset-x-5 -top-24 bottom-0 min-[400px]:-inset-x-6 sm:-inset-x-6" />
 
             <div className="relative">
               {/* Short label — letters read better than words at this size,
@@ -137,7 +149,7 @@ export function Landing() {
                   aria-hidden, so a screen reader never reads the glyphs. */}
               <h1
                 aria-label="Red Tide"
-                className="font-display mt-3 text-7xl leading-[0.9] text-paper sm:text-8xl"
+                className="font-display mt-4 text-7xl leading-[0.9] text-paper sm:mt-3 sm:text-8xl"
               >
                 <DecryptedText text="RED TIDE" />
               </h1>
@@ -150,12 +162,12 @@ export function Landing() {
                 animateBy="words"
                 direction="top"
                 delay={55}
-                className="mt-4 block max-w-md text-base leading-relaxed text-muted sm:text-lg"
+                className="mt-5 block max-w-md text-base leading-relaxed text-muted sm:mt-4 sm:text-lg"
               />
 
               {/* NOT ANIMATED. The route to the map is the whole point of this
                   page; it must be there and clickable on the first frame. */}
-              <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
+              <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4 sm:mt-8 sm:gap-y-3">
               <Link
                 to="/map"
                 className="rounded-lg bg-accent px-6 py-3 text-base font-semibold text-ink transition hover:brightness-110 active:scale-95"
@@ -173,7 +185,7 @@ export function Landing() {
           </section>
 
           {/* -------------------------------------------------- live status */}
-          <section aria-label="Live status" className="mt-12 sm:mt-16">
+          <section aria-label="Live status" className="mt-14 sm:mt-16">
             {zonesReady ? (
               <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-line bg-ink-2/60 px-3.5 py-2.5 text-[13px] leading-relaxed text-muted">
                 <StatusPip
@@ -202,7 +214,7 @@ export function Landing() {
           </section>
 
           {/* ------------------------------------------------------ figures */}
-          <section aria-label="Figures" className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
+          <section aria-label="Figures" className="mt-3.5 grid grid-cols-3 gap-2.5 sm:mt-4 sm:gap-3">
             <Figure label="Zones watched" value={zones.length} ready={zonesReady} />
             <Figure label="Pending reports" value={pendingTotal} />
             <Figure
@@ -220,11 +232,11 @@ export function Landing() {
 
             Same copy as before, verbatim — only the delivery changed.
           */}
-          <section className="mt-12 sm:mt-16" aria-label="How it works">
+          <section className="mt-14 sm:mt-16" aria-label="How it works">
             <h2 className="text-base font-semibold text-paper">
               <BlurText text="How it works" animateBy="words" direction="top" delay={70} />
             </h2>
-            <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-muted">
+            <ul className="mt-4 space-y-3.5 text-sm leading-relaxed text-muted sm:mt-3 sm:space-y-2.5">
               {HOW_IT_WORKS.map((item, index) => (
                 <Bullet key={item}>
                   <BlurText
@@ -242,9 +254,9 @@ export function Landing() {
           </section>
 
           {/* ----------------------------------------------------- primer */}
-          <section className="mt-12 sm:mt-16" aria-label="What is red tide">
+          <section className="mt-14 sm:mt-16" aria-label="What is red tide">
             <h2 className="text-base font-semibold text-paper">What is red tide?</h2>
-            <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-muted">
+            <ul className="mt-4 space-y-3.5 text-sm leading-relaxed text-muted sm:mt-3 sm:space-y-2.5">
               <Bullet>
                 A bloom of microscopic algae colours the water. Shellfish —{' '}
                 <em>tahong</em>, <em>talaba</em>, <em>halaan</em>,{' '}
@@ -262,11 +274,11 @@ export function Landing() {
             </ul>
           </section>
 
-          <div className="mt-12">
+          <div className="mt-14 sm:mt-12">
             <DemoBanner />
           </div>
 
-          <footer className="mt-8 flex flex-col gap-1.5 border-t border-line py-6 text-xs text-faint sm:flex-row sm:items-center sm:justify-between">
+          <footer className="mt-10 flex flex-col gap-2 border-t border-line py-7 text-xs text-faint sm:mt-8 sm:gap-1.5 sm:py-6 sm:flex-row sm:items-center sm:justify-between">
             <p>Community early warning — not an official BFAR advisory</p>
             <p>
               Map data ©{' '}
@@ -300,7 +312,7 @@ function Figure({
   ready?: boolean
 }) {
   return (
-    <div className="rounded-lg border border-line bg-ink-2/50 px-3 py-2.5">
+    <div className="rounded-lg border border-line bg-ink-2/50 px-3 py-3 sm:py-2.5">
       <p
         className={`font-display text-3xl leading-none tabular-nums sm:text-4xl ${valueClass ?? 'text-paper'}`}
       >
@@ -313,7 +325,7 @@ function Figure({
 
 function Bullet({ children }: { children: ReactNode }) {
   return (
-    <li className="flex gap-2.5">
+    <li className="flex gap-3 sm:gap-2.5">
       <span
         className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-accent/70"
         aria-hidden="true"
