@@ -570,3 +570,161 @@ The flick-velocity projection itself is pure logic in `sheetAnchors.test.ts` (§
 **Honest limitation:** `final-pass.mjs` runs Chromium only. The two halves agree on
 *what* to check, but a sandbox without a real browser can only run the jsdom half —
 the geometry/motion assertions then ride on the last real-browser run, not on CI.
+
+---
+
+## 15. Landing motion pass: BlurText + a contained Ferrofluid hero (2026-09-14)
+
+**Branch:** `arena/01a09e59-red-tide-ppc`
+**Scope:** the landing page (`/`) only. `/map` and `/admin` untouched; `store.ts`,
+`firebase.ts`, `data/` and `hooks/` untouched. Two more reactbits pieces, one of
+which breaks a standing constraint on purpose — see §15.2.
+
+### 15.1 `BlurText` — text reveal on scroll
+
+`components/BlurText.tsx`, after reactbits.dev `BlurText` (MIT + Commons Clause).
+Words (or letters) start blurred, transparent and offset, and resolve to sharp.
+Its only dependency is `motion`, already in the tree — **no new dependency.**
+
+Applied to, and only to:
+
+| Block | Mode | Why |
+|---|---|---|
+| "Community early warning" eyebrow | `letters`, 14 ms | Short label; letter-by-letter reads better at 12 px than three word-blocks. |
+| Hero subheading | `words`, 55 ms, `direction="top"` | The brief's headline treatment. |
+| "How it works" `<h2>` + its three items | `words`, 18 ms | Each item carries a slightly deeper `rootMargin` than the one above it, so the list resolves top-to-bottom. |
+
+**The headline keeps `DecryptedText`.** The two are competing treatments for the
+same `<h1>`; the scramble is the established identity and it already handles
+reduced motion and the small-viewport skip. BlurText picks up everything around it.
+
+**Staggering is per-block, not one timeline.** Each `BlurText` owns its own
+`IntersectionObserver`, so nothing below the fold fires at page load — the eyebrow
+and subheading resolve on arrival, "How it works" resolves when you scroll to it.
+
+**Type tokens are unchanged:** Bebas Neue on the `<h1>` (`font-display`), Space
+Grotesk for body copy (the `<body>` default), JetBrains Mono for the stat readouts
+(untouched — the figures are `CountUp`, not `BlurText`). No copy was reworded;
+`landingMotion.test.tsx` asserts the exact strings.
+
+#### Two deliberate divergences from upstream
+
+1. **Words are joined by a real space, not `U+00A0`.** Upstream appends a
+   non-breaking space *inside* each word span. That is invisible on reactbits'
+   own demo because its root is `flex flex-wrap`, but this component renders into
+   ordinary headings and list items — and a paragraph of NBSP-joined words is a
+   single unbreakable run that blows through `max-w-md` instead of wrapping. Caught
+   by the test suite while writing it; pinned by a regression test.
+2. **The root is a `<span>` by default (`as` prop), not a `<p>`.** Upstream hard-codes
+   `<p>`, which is invalid inside `<h2>` and `<li>`.
+
+#### The copy can never be stranded invisible
+
+This animates from `opacity: 0` on a public-health page, so every failure path ends
+with the plain string on screen:
+
+- `prefers-reduced-motion` → static text, **no motion nodes mounted at all**.
+- No `IntersectionObserver` (old Android, bots, reader mode, jsdom) → treated as
+  already in view, so it reveals immediately rather than never.
+- Observer installed but never fires → a 4 s failsafe reveals it anyway.
+
+And the genuinely safety-critical text is **not routed through this component**:
+both CTAs, the "what is red tide" PSP primer, the `DemoBanner`, and the
+"not an official BFAR advisory" disclaimer are plain, unanimated DOM.
+`landingMotion.test.tsx` enforces that as a standing rule.
+
+### 15.2 `Ferrofluid` — the WebGL exception, and what it cost
+
+`components/ferrofluid/Ferrofluid.tsx` + `components/HeroBackdrop.tsx`, after
+reactbits.dev `Ferrofluid`. **This adds `ogl` (WebGL) — a new runtime dependency,
+and a direct contradiction of this project's "no WebGL / canvas-heavy effects"
+rule** (rural connectivity, low-end Android). It was authorised for the landing
+hero only, conditional on the mitigations below. It is **not** full-page, and
+nothing behind "How it works" or the stat cards.
+
+**Colours are the app's own tokens** — `['#f0a500', '#eaeaea', '#080808']`, amber
+and off-white on near-black — not the component's default indigo/cyan.
+
+#### Mitigations, all of them in `HeroBackdrop`
+
+| Mitigation | Implementation |
+|---|---|
+| **Reduced motion mounts no WebGL** | The `React.lazy` import is never reached, so `ogl` is never fetched and no GL context is ever created. A static amber radial gradient is the entire backdrop. Not a paused canvas — a hard skip. |
+| **`dpr={1}`** | Not `devicePixelRatio`. Fragments scale with the square of DPR, so on a DPR-3 phone this is a ~9× reduction in shading work. The effect is a soft glow; 1× is indistinguishable. |
+| **Paused off-screen** | `IntersectionObserver` on the hero cancels the rAF loop. Scrolling the rest of the page does zero GL work. |
+| **Paused on `document.hidden`** | Backgrounded tab renders nothing. |
+| **No mouse interaction** | `mouseInteraction={false}` — also removes a `pointermove` handler from the main thread during scroll. |
+| **Lazy-loaded** | Own chunk behind `Suspense`; the page paints without it. |
+| **Deferred to idle** | `requestIdleCallback` (1.2 s timeout fallback) gates the import, so it never competes with first paint or the Firestore subscription. A visitor who scrolls straight past never downloads it at all. |
+| **`antialias: false`** | MSAA buys nothing on a soft glow and costs real fill rate. |
+| **Contained** | Sized by the hero `<section>`, with a `to-ink` gradient at its bottom edge. The existing `Waves` canvas is masked out across the top of the page, so exactly one animated layer ever repaints a given band. |
+
+#### Two fixes to the vendored source
+
+1. **`paused` no longer re-creates the GL context.** Upstream lists `paused` in the
+   effect's dependency array — so every pause/resume tears down the renderer,
+   program, geometry and canvas and builds a new one. Since this component pauses on
+   *every* scroll-out and tab-blur, that would mean repeated WebGL context churn,
+   the single most expensive thing a page can do to a mobile GPU. `paused` now lives
+   in a ref driving a start/stop pair. Also added: `WEBGL_lose_context` on unmount
+   (browsers cap live contexts and the router remounts this), and `try/catch` around
+   context creation, shader link and `render()` so a device without WebGL falls back
+   to the gradient instead of throwing.
+2. **`colors` is compared by value, not array identity** — upstream rebuilds the
+   entire scene on every parent render unless the caller memoises.
+
+### 15.3 Bundle cost — measured, `npm run build`, gzipped
+
+The first build regressed the initial load: `vite.config.ts`'s `manualChunks` was
+sweeping `ogl` into the eager `vendor` chunk, which **downloads it on every visit
+and makes the lazy boundary a lie** — `vendor` went 108.78 → 121.49 kB gz. The
+config now explicitly returns `undefined` for `ogl` so rollup keeps it in the
+dynamic chunk. Numbers below are after that fix.
+
+| Chunk (gz) | Before | After | Δ |
+|---|---|---|---|
+| `index` (app JS) | 16.15 kB | 17.37 kB | **+1.22 kB** (BlurText + HeroBackdrop) |
+| `index` CSS | 10.89 kB | 11.13 kB | **+0.24 kB** |
+| `vendor` | 108.78 kB | 108.78 kB | unchanged ✅ |
+| `firebase` | 135.20 kB | 135.20 kB | unchanged |
+| `leaflet` | 48.68 kB | 48.68 kB | unchanged |
+| `router` | 14.10 kB | 14.10 kB | unchanged |
+| **Initial load total** | **340.52 kB** | **341.98 kB** | **+1.46 kB gz (+0.43%)** |
+| `Ferrofluid` (new, **deferred**) | — | 15.86 kB | not in the initial load |
+
+**Verified not preloaded:** the built `index.html` contains no reference to the
+Ferrofluid chunk — it is fetched only after idle, and only if the hero is on screen.
+
+**On a ~400 kbit/s rural 3G link (~50 kB/s):** the initial-load delta is **~29 ms**,
+which is not meaningful. The 15.86 kB shader chunk would be ~317 ms — which is
+exactly why it is lazy, idle-gated and visibility-gated rather than part of the
+initial payload. It never blocks the page from rendering, and users on reduced
+motion or who scroll past the hero never pay it at all.
+
+### 15.4 Verification
+
+`npm run typecheck`, `npm test` (**165 passing, 16 files**) and `npm run build` are
+all green. Routing confirmed unchanged: `App.test.tsx`'s existing walk still goes
+`/` → `/map` → report → `/admin` → approve → back to the map.
+
+New tests:
+
+- **`BlurText.test.tsx`** (7) — the three no-strand paths (reduced motion, no
+  `IntersectionObserver`, observer-never-fires failsafe), the accessible label,
+  per-block observation, and the line-wrap regression from §15.1.
+- **`HeroBackdrop.test.tsx`** (4) — the decisive one being that under
+  `prefers-reduced-motion` the Ferrofluid module's **import count is 0**: not
+  merely "no canvas rendered", but the chunk was never even requested, so no GL
+  context can exist. Plus: off-screen hero does not import it either, the gradient
+  is always painted, and the canvas does mount when visible + idle.
+- **`landingMotion.test.tsx`** (6) — the safety guardrail: both CTAs present with
+  working hrefs, the BFAR disclaimer present and containing zero animated spans,
+  the PSP primer plain, and all animated copy byte-identical to what shipped.
+
+**Not verified here:** the same sandbox limitation as §13.8 and §1 — Playwright's
+browser CDN is unreachable, so there is no real-Chromium run of this pass. Every
+claim above about *observable GPU cost* (the DPR-1 fill-rate saving, frame timing,
+the pause actually landing on a real compositor) is reasoned from the code and the
+shader, not measured on a device. The reduced-motion and lazy-load claims *are*
+mechanically verified, because they are import-graph facts rather than rendering
+facts. **Before this ships to real users on real phones, run it on one.**

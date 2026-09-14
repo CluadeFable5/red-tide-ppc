@@ -1,9 +1,11 @@
 import { useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { BlurText } from '../components/BlurText'
 import { CountUp } from '../components/CountUp'
 import { DecryptedText } from '../components/DecryptedText'
 import { DemoBanner } from '../components/DemoBanner'
 import { Header } from '../components/Header'
+import { HeroBackdrop } from '../components/HeroBackdrop'
 import { StatusPip } from '../components/StatusPip'
 import { Waves } from '../components/Waves'
 import { dominantZoneStatus } from '../motion/readouts'
@@ -24,7 +26,37 @@ import type { ZoneStatus } from '../types'
  * store is initialised once in `App`), which is also why the Firebase chunk
  * ships with the landing bundle instead of being deferred — see
  * `docs/design-references.md` §14.3.
+ *
+ * THE MOTION PASS (§15)
+ * ---------------------
+ * Two layers, each scoped so they never overlap:
+ *
+ *  - `HeroBackdrop` — the Ferrofluid WebGL panel, the hero only. It owns all
+ *    the reduced-motion / off-screen / lazy-load policy; see that file.
+ *  - `Waves` — the existing 2D canvas, now masked out behind the hero so only
+ *    one animated layer ever repaints a given band of the page.
+ *
+ * Text reveals use `BlurText`, each block triggered by its own scroll
+ * intersection so the page resolves as you read down it rather than firing
+ * everything at load.
+ *
+ * WHAT IS DELIBERATELY NOT ANIMATED
+ * ---------------------------------
+ * The CTAs, the "what is red tide" primer, the `DemoBanner` and the
+ * "not an official BFAR advisory" disclaimer are plain DOM. This is a public
+ * health surface: safety copy and the route to the map must never depend on
+ * an animation, an observer or a WebGL context succeeding.
  */
+/**
+ * The "How it works" steps. Extracted only so each can carry its own scroll
+ * trigger — the strings are unchanged from what shipped.
+ */
+const HOW_IT_WORKS = [
+  'Find your shore — six zones cover the coast, from the city bay to St. Paul Bay.',
+  'Report what you see — water colour, dead shellfish; ten words is enough.',
+  'A local admin verifies it — if it checks out, the zone goes under advisory.',
+] as const
+
 export function Landing() {
   const zones = useAppStore((state) => state.zones)
   const reports = useAppStore((state) => state.reports)
@@ -46,7 +78,12 @@ export function Landing() {
 
   return (
     <div className="relative min-h-dvh overflow-x-clip bg-ink text-paper">
-      <Waves className="absolute inset-0 h-full w-full" />
+      {/*
+        The ambient sine canvas stays, but it is masked out across the top of
+        the page so it does not repaint the same pixels the hero's Ferrofluid
+        panel already owns. One animated layer per band of the page.
+      */}
+      <Waves className="absolute inset-0 h-full w-full [mask-image:linear-gradient(to_bottom,transparent_0,transparent_380px,black_620px)]" />
 
       <div className="relative flex min-h-dvh flex-col">
         <Header
@@ -73,40 +110,65 @@ export function Landing() {
 
         <main className="mx-auto w-full max-w-2xl flex-1 px-4 sm:px-6">
           {/* ---------------------------------------------------------- hero */}
-          <section className="pt-14 sm:pt-24">
-            <p className="text-xs font-medium tracking-[0.08em] text-accent">
-              Community early warning
-            </p>
+          {/*
+            `relative` + the absolutely-positioned backdrop is what contains
+            the WebGL panel to the hero: it is sized by this section, not by
+            the page, so it never sits behind the figures or "How it works".
+          */}
+          <section className="relative pt-14 sm:pt-24">
+            <HeroBackdrop className="-inset-x-4 -top-24 bottom-0 sm:-inset-x-6" />
 
-            {/* The headline decrypts once on load (skipped on small viewports
-                and under reduced motion — see DecryptedText). The label lives
-                on the heading itself: the scrambling text is aria-hidden, so
-                a screen reader never reads the glyphs. */}
-            <h1
-              aria-label="Red Tide"
-              className="font-display mt-3 text-7xl leading-[0.9] text-paper sm:text-8xl"
-            >
-              <DecryptedText text="RED TIDE" />
-            </h1>
+            <div className="relative">
+              {/* Short label — letters read better than words at this size,
+                  and it is the first thing to resolve. */}
+              <BlurText
+                as="p"
+                text="Community early warning"
+                animateBy="letters"
+                direction="top"
+                delay={14}
+                stepDuration={0.22}
+                className="text-xs font-medium tracking-[0.08em] text-accent"
+              />
 
-            <p className="mt-4 max-w-md text-base leading-relaxed text-muted sm:text-lg">
-              Watch the water, report what you see, and warn Puerto Princesa
-              before bad shellfish reaches the table.
-            </p>
+              {/* The headline still decrypts once on load (skipped on small
+                  viewports and under reduced motion — see DecryptedText). The
+                  label lives on the heading itself: the scrambling text is
+                  aria-hidden, so a screen reader never reads the glyphs. */}
+              <h1
+                aria-label="Red Tide"
+                className="font-display mt-3 text-7xl leading-[0.9] text-paper sm:text-8xl"
+              >
+                <DecryptedText text="RED TIDE" />
+              </h1>
 
-            <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
+              {/* The subheading blurs in by words, after the scramble has had
+                  time to resolve above it. */}
+              <BlurText
+                as="p"
+                text="Watch the water, report what you see, and warn Puerto Princesa before bad shellfish reaches the table."
+                animateBy="words"
+                direction="top"
+                delay={55}
+                className="mt-4 block max-w-md text-base leading-relaxed text-muted sm:text-lg"
+              />
+
+              {/* NOT ANIMATED. The route to the map is the whole point of this
+                  page; it must be there and clickable on the first frame. */}
+              <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
               <Link
                 to="/map"
                 className="rounded-lg bg-accent px-6 py-3 text-base font-semibold text-ink transition hover:brightness-110 active:scale-95"
               >
                 Open the map
               </Link>
-              <Link
-                to="/map"
-                className="text-sm font-medium text-paper/80 underline-offset-4 transition-colors hover:text-accent hover:underline"
-              >
-                Report a sighting
-              </Link>
+                <Link
+                  to="/map"
+                  className="text-sm font-medium text-paper/80 underline-offset-4 transition-colors hover:text-accent hover:underline"
+                >
+                  Report a sighting
+                </Link>
+              </div>
             </div>
           </section>
 
@@ -151,21 +213,31 @@ export function Landing() {
           </section>
 
           {/* ------------------------------------------------ how it works */}
+          {/*
+            Its own scroll trigger, well below the hero: by the time this is on
+            screen the hero's reveal is long finished, so the page resolves
+            section by section instead of all at once.
+
+            Same copy as before, verbatim — only the delivery changed.
+          */}
           <section className="mt-12 sm:mt-16" aria-label="How it works">
-            <h2 className="text-base font-semibold text-paper">How it works</h2>
+            <h2 className="text-base font-semibold text-paper">
+              <BlurText text="How it works" animateBy="words" direction="top" delay={70} />
+            </h2>
             <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-muted">
-              <Bullet>
-                Find your shore — six zones cover the coast, from the city bay
-                to St. Paul Bay.
-              </Bullet>
-              <Bullet>
-                Report what you see — water colour, dead shellfish; ten words
-                is enough.
-              </Bullet>
-              <Bullet>
-                A local admin verifies it — if it checks out, the zone goes
-                under advisory.
-              </Bullet>
+              {HOW_IT_WORKS.map((item, index) => (
+                <Bullet key={item}>
+                  <BlurText
+                    text={item}
+                    animateBy="words"
+                    direction="top"
+                    delay={18}
+                    // Each item waits for the one above it, so the list reads
+                    // top-to-bottom rather than as three simultaneous blocks.
+                    rootMargin={`0px 0px ${-8 - index * 4}% 0px`}
+                  />
+                </Bullet>
+              ))}
             </ul>
           </section>
 
