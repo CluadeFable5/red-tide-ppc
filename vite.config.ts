@@ -29,6 +29,13 @@ export default defineConfig({
         // Vite 8 (rolldown) only accepts the function form.
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return undefined
+          // `ogl` is the WebGL library behind the landing hero's Ferrofluid
+          // panel, and it is `React.lazy`-loaded on purpose (see
+          // `components/HeroBackdrop.tsx`). Forcing it into the eager `vendor`
+          // chunk would download it on every visit and make the lazy boundary
+          // a lie — measured at +12.7 kB gzip on the initial load. Returning
+          // undefined lets rollup keep it in the dynamic Ferrofluid chunk.
+          if (/[\\/]node_modules[\\/]ogl[\\/]/.test(id)) return undefined
           if (id.includes('firebase')) return 'firebase'
           if (id.includes('leaflet')) return 'leaflet'
           if (id.includes('react-router')) return 'router'

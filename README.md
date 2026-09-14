@@ -235,6 +235,9 @@ src/
     DecryptedText.tsx     # landing hero: glyphs resolve left to right (reactbits pattern)
     Waves.tsx             # landing background: three sine composites on a canvas
     CountUp.tsx           # landing figures: counts up on first view, re-tweens on live updates
+    BlurText.tsx          # landing copy: words blur into focus on their own scroll trigger
+    HeroBackdrop.tsx      # landing hero backdrop: owns the WebGL policy (see docs §15)
+    ferrofluid/           # the `ogl` shader itself — reach it only via HeroBackdrop
     Map.test.tsx          # regression: the zone-path classes in a production render
   motion/
     RouteTransition.tsx   # map <-> admin cross-fade

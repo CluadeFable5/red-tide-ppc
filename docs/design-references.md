@@ -570,3 +570,476 @@ The flick-velocity projection itself is pure logic in `sheetAnchors.test.ts` (§
 **Honest limitation:** `final-pass.mjs` runs Chromium only. The two halves agree on
 *what* to check, but a sandbox without a real browser can only run the jsdom half —
 the geometry/motion assertions then ride on the last real-browser run, not on CI.
+
+---
+
+## 15. Landing motion pass: BlurText + a contained Ferrofluid hero (2026-09-14)
+
+**Branch:** `arena/01a09e59-red-tide-ppc`
+**Scope:** the landing page (`/`) only. `/map` and `/admin` untouched; `store.ts`,
+`firebase.ts`, `data/` and `hooks/` untouched. Two more reactbits pieces, one of
+which breaks a standing constraint on purpose — see §15.2.
+
+### 15.1 `BlurText` — text reveal on scroll
+
+`components/BlurText.tsx`, after reactbits.dev `BlurText` (MIT + Commons Clause).
+Words (or letters) start blurred, transparent and offset, and resolve to sharp.
+Its only dependency is `motion`, already in the tree — **no new dependency.**
+
+Applied to, and only to:
+
+| Block | Mode | Why |
+|---|---|---|
+| "Community early warning" eyebrow | `letters`, 14 ms | Short label; letter-by-letter reads better at 12 px than three word-blocks. |
+| Hero subheading | `words`, 55 ms, `direction="top"` | The brief's headline treatment. |
+| "How it works" `<h2>` + its three items | `words`, 18 ms | Each item carries a slightly deeper `rootMargin` than the one above it, so the list resolves top-to-bottom. |
+
+**The headline keeps `DecryptedText`.** The two are competing treatments for the
+same `<h1>`; the scramble is the established identity and it already handles
+reduced motion and the small-viewport skip. BlurText picks up everything around it.
+
+**Staggering is per-block, not one timeline.** Each `BlurText` owns its own
+`IntersectionObserver`, so nothing below the fold fires at page load — the eyebrow
+and subheading resolve on arrival, "How it works" resolves when you scroll to it.
+
+**Type tokens are unchanged:** Bebas Neue on the `<h1>` (`font-display`), Space
+Grotesk for body copy (the `<body>` default), JetBrains Mono for the stat readouts
+(untouched — the figures are `CountUp`, not `BlurText`). No copy was reworded;
+`landingMotion.test.tsx` asserts the exact strings.
+
+#### Two deliberate divergences from upstream
+
+1. **Words are joined by a real space, not `U+00A0`.** Upstream appends a
+   non-breaking space *inside* each word span. That is invisible on reactbits'
+   own demo because its root is `flex flex-wrap`, but this component renders into
+   ordinary headings and list items — and a paragraph of NBSP-joined words is a
+   single unbreakable run that blows through `max-w-md` instead of wrapping. Caught
+   by the test suite while writing it; pinned by a regression test.
+2. **The root is a `<span>` by default (`as` prop), not a `<p>`.** Upstream hard-codes
+   `<p>`, which is invalid inside `<h2>` and `<li>`.
+
+#### The copy can never be stranded invisible
+
+This animates from `opacity: 0` on a public-health page, so every failure path ends
+with the plain string on screen:
+
+- `prefers-reduced-motion` → static text, **no motion nodes mounted at all**.
+- No `IntersectionObserver` (old Android, bots, reader mode, jsdom) → treated as
+  already in view, so it reveals immediately rather than never.
+- Observer installed but never fires → a 4 s failsafe reveals it anyway.
+
+And the genuinely safety-critical text is **not routed through this component**:
+both CTAs, the "what is red tide" PSP primer, the `DemoBanner`, and the
+"not an official BFAR advisory" disclaimer are plain, unanimated DOM.
+`landingMotion.test.tsx` enforces that as a standing rule.
+
+### 15.2 `Ferrofluid` — the WebGL exception, and what it cost
+
+`components/ferrofluid/Ferrofluid.tsx` + `components/HeroBackdrop.tsx`, after
+reactbits.dev `Ferrofluid`. **This adds `ogl` (WebGL) — a new runtime dependency,
+and a direct contradiction of this project's "no WebGL / canvas-heavy effects"
+rule** (rural connectivity, low-end Android). It was authorised for the landing
+hero only, conditional on the mitigations below. It is **not** full-page, and
+nothing behind "How it works" or the stat cards.
+
+**Colours are the app's own tokens** — `['#f0a500', '#eaeaea', '#080808']`, amber
+and off-white on near-black — not the component's default indigo/cyan.
+
+#### Mitigations, all of them in `HeroBackdrop`
+
+| Mitigation | Implementation |
+|---|---|
+| **Reduced motion mounts no WebGL** | The `React.lazy` import is never reached, so `ogl` is never fetched and no GL context is ever created. A static amber radial gradient is the entire backdrop. Not a paused canvas — a hard skip. |
+| **`dpr={1}`** | Not `devicePixelRatio`. Fragments scale with the square of DPR, so on a DPR-3 phone this is a ~9× reduction in shading work. The effect is a soft glow; 1× is indistinguishable. |
+| **Paused off-screen** | `IntersectionObserver` on the hero cancels the rAF loop. Scrolling the rest of the page does zero GL work. |
+| **Paused on `document.hidden`** | Backgrounded tab renders nothing. |
+| **No mouse interaction** | `mouseInteraction={false}` — also removes a `pointermove` handler from the main thread during scroll. |
+| **Lazy-loaded** | Own chunk behind `Suspense`; the page paints without it. |
+| **Deferred to idle** | `requestIdleCallback` (1.2 s timeout fallback) gates the import, so it never competes with first paint or the Firestore subscription. A visitor who scrolls straight past never downloads it at all. |
+| **`antialias: false`** | MSAA buys nothing on a soft glow and costs real fill rate. |
+| **Contained** | Sized by the hero `<section>`, with a `to-ink` gradient at its bottom edge. The existing `Waves` canvas is masked out across the top of the page, so exactly one animated layer ever repaints a given band. |
+
+#### Two fixes to the vendored source
+
+1. **`paused` no longer re-creates the GL context.** Upstream lists `paused` in the
+   effect's dependency array — so every pause/resume tears down the renderer,
+   program, geometry and canvas and builds a new one. Since this component pauses on
+   *every* scroll-out and tab-blur, that would mean repeated WebGL context churn,
+   the single most expensive thing a page can do to a mobile GPU. `paused` now lives
+   in a ref driving a start/stop pair. Also added: `WEBGL_lose_context` on unmount
+   (browsers cap live contexts and the router remounts this), and `try/catch` around
+   context creation, shader link and `render()` so a device without WebGL falls back
+   to the gradient instead of throwing.
+2. **`colors` is compared by value, not array identity** — upstream rebuilds the
+   entire scene on every parent render unless the caller memoises.
+
+### 15.3 Bundle cost — measured, `npm run build`, gzipped
+
+The first build regressed the initial load: `vite.config.ts`'s `manualChunks` was
+sweeping `ogl` into the eager `vendor` chunk, which **downloads it on every visit
+and makes the lazy boundary a lie** — `vendor` went 108.78 → 121.49 kB gz. The
+config now explicitly returns `undefined` for `ogl` so rollup keeps it in the
+dynamic chunk. Numbers below are after that fix.
+
+| Chunk (gz) | Before | After | Δ |
+|---|---|---|---|
+| `index` (app JS) | 16.15 kB | 17.37 kB | **+1.22 kB** (BlurText + HeroBackdrop) |
+| `index` CSS | 10.89 kB | 11.13 kB | **+0.24 kB** |
+| `vendor` | 108.78 kB | 108.78 kB | unchanged ✅ |
+| `firebase` | 135.20 kB | 135.20 kB | unchanged |
+| `leaflet` | 48.68 kB | 48.68 kB | unchanged |
+| `router` | 14.10 kB | 14.10 kB | unchanged |
+| **Initial load total** | **340.52 kB** | **341.98 kB** | **+1.46 kB gz (+0.43%)** |
+| `Ferrofluid` (new, **deferred**) | — | 15.86 kB | not in the initial load |
+
+**Verified not preloaded:** the built `index.html` contains no reference to the
+Ferrofluid chunk — it is fetched only after idle, and only if the hero is on screen.
+
+**On a ~400 kbit/s rural 3G link (~50 kB/s):** the initial-load delta is **~29 ms**,
+which is not meaningful. The 15.86 kB shader chunk would be ~317 ms — which is
+exactly why it is lazy, idle-gated and visibility-gated rather than part of the
+initial payload. It never blocks the page from rendering, and users on reduced
+motion or who scroll past the hero never pay it at all.
+
+### 15.4 Verification
+
+`npm run typecheck`, `npm test` (**165 passing, 16 files**) and `npm run build` are
+all green. Routing confirmed unchanged: `App.test.tsx`'s existing walk still goes
+`/` → `/map` → report → `/admin` → approve → back to the map.
+
+New tests:
+
+- **`BlurText.test.tsx`** (7) — the three no-strand paths (reduced motion, no
+  `IntersectionObserver`, observer-never-fires failsafe), the accessible label,
+  per-block observation, and the line-wrap regression from §15.1.
+- **`HeroBackdrop.test.tsx`** (4) — the decisive one being that under
+  `prefers-reduced-motion` the Ferrofluid module's **import count is 0**: not
+  merely "no canvas rendered", but the chunk was never even requested, so no GL
+  context can exist. Plus: off-screen hero does not import it either, the gradient
+  is always painted, and the canvas does mount when visible + idle.
+- **`landingMotion.test.tsx`** (6) — the safety guardrail: both CTAs present with
+  working hrefs, the BFAR disclaimer present and containing zero animated spans,
+  the PSP primer plain, and all animated copy byte-identical to what shipped.
+
+**Not verified here:** the same sandbox limitation as §13.8 and §1 — Playwright's
+browser CDN is unreachable, so there is no real-Chromium run of this pass. Every
+claim above about *observable GPU cost* (the DPR-1 fill-rate saving, frame timing,
+the pause actually landing on a real compositor) is reasoned from the code and the
+shader, not measured on a device. The reduced-motion and lazy-load claims *are*
+mechanically verified, because they are import-graph facts rather than rendering
+facts. **Before this ships to real users on real phones, run it on one.**
+
+---
+
+## 16. §15 verified in a real browser — and the three bugs it found (2026-09-14)
+
+**Branch:** `arena/01a09e59-red-tide-ppc`
+**Script:** `scripts/hero-pass.mjs` (+ `scripts/png-analyse.mjs`)
+**Shots:** `docs/hero-pass-shots/`
+
+§15.4 closed with an explicit debt: the WebGL mitigations were argued from the
+shader source and the import graph, never measured. Playwright's browser CDN is
+blocked here, so the gap stood. This section closes it.
+
+### 16.1 Getting a real browser without adding a dependency
+
+`@sparticuz/chromium` + `puppeteer-core`, installed in `~/qa-tools` — **outside
+the repo**, so `package.json` is untouched. Two obstacles worth recording:
+
+- The npm-shipped binary needs `libnss3`/`libnspr4`, absent here, and
+  `deb.debian.org` is unreachable. `@sparticuz/chromium` **ships them itself**
+  in `bin/al2023.tar.br`; extracting that and setting `LD_LIBRARY_PATH` is
+  enough.
+- `chromium.graphicsMode = true` is required, otherwise the bundled args include
+  `--disable-gpu` and there is no WebGL to test.
+
+Result: real Chromium **153.0.8010.0**, WebGL via **ANGLE/SwiftShader**.
+
+> **SwiftShader is a CPU rasteriser.** Absolute fps below is a software floor,
+> not a phone number. Relative and boolean facts (does it mount, does it stop,
+> does it wrap) transfer; absolute GPU cost does not.
+
+### 16.2 Results — 6/6, after fixes
+
+| # | Item | Result | Evidence |
+|---|---|---|---|
+| 1 | Canvas mounts normally; none under reduced motion | **PASS** | normal: 1 WebGL context, 1 `Ferrofluid` chunk request, canvas 672×490. reduced: **0 contexts, 0 chunk requests**, static gradient present, 1 canvas on the page (Waves only) |
+| 2 | Frame cost at dpr=1, throttled | **PASS** | control (no canvas) **60.0 fps**; shader unthrottled 11.5 fps / 11.5 draws·s⁻¹; CPU 4× 8.4 fps; CPU 6× 8.3 fps. Marginal shader cost **+70.4 ms/frame** on a CPU rasteriser |
+| 3 | Pause on scroll-out and tab-hidden | **PASS** | draw calls per 1500 ms — desktop **13 → 0** out of view, **0** hidden, 15 on return; phone **34 → 0**, **0**, 33 |
+| 4 | DecryptedText → BlurText ordering | **PASS** | h1 resolves at **350 ms**, subheading opaque at **600 ms**, list stays **0.00** through 3200 ms without scrolling, **1.00** after |
+| 5 | Word-wrap fix | **PASS** | at 360 px: 17 word spans over **3 lines** (tops 284/310/336), no U+00A0, `scrollWidth == clientWidth` |
+| 6 | No seam at the hero boundary | **PASS** | gutter scan max jump 2.66/255; across the hero bottom 1.93/255; **side edges 0.54/255** (was 11.17) |
+
+### 16.3 Three real bugs, none of which the unit tests could see
+
+**(a) The off-screen pause never fired on desktop.** `HeroBackdrop` used
+`rootMargin: '100px'`. The landing page at 1280×800 has only ~537 px of scroll,
+so a fully scrolled-away hero still sits at `bottom = -88px` — inside the 100 px
+margin. The observer therefore never reported it hidden and **the shader ran for
+the entire visit on desktop**: measured 13 draws/1.5 s scrolled out, identical to
+visible. The single most important mitigation was inert on the most common
+desktop size. Now `rootMargin: '0px'` → 0 draws. The canvas holds its last frame
+while paused, so resuming is not a pop.
+
+**(b) The BlurText failsafe was cancelling the scroll stagger.** The flat 4 s
+timer from §15.1 fired on blocks that were still below the fold: "How it works"
+measured `opacity: 1.00` at t=3200 ms **without ever being scrolled to**. A
+reader lingering on the hero arrived to find the list already revealed.
+
+The first fix — gate the timer on "is any part of the element in the viewport" —
+was *also* wrong, and the browser caught that too: at 1280×800 the first list
+item peeks 46 px into the viewport at rest, but the observer is configured
+`threshold: 0.2` with a negative bottom `rootMargin`, so it is *correct* for it
+not to have fired. The naive check overrode a perfectly healthy observer.
+
+The rule now: **the failsafe catches an observer that is broken, not one that is
+waiting.** A real `IntersectionObserver` always delivers an initial callback; if
+any callback has ever arrived the backstop disarms permanently and the
+threshold/rootMargin contract is left alone. Only total silence *plus* the
+element genuinely being on screen triggers a reveal. The unit-test fake was
+updated to deliver that initial callback, because the old fake was simulating a
+*dead* observer and so could never have caught this.
+
+**(c) The hero backdrop had a hard vertical edge.** Found by *looking at the
+screenshot*, not by the scan — item 6's original strip ran vertically down the
+page gutter, which structurally cannot see a vertical boundary. The backdrop is
+only as wide as the content column, so its left edge was an **11.17/255**
+luminance step at x=304: a visible lighter rectangle behind the headline. (The
+`-inset-x-4` passed via `className` never applied — `inset-0` is hard-coded on
+the same element and wins.) Fixed with a two-pass intersected feather mask
+(horizontal 18%/82%, vertical to 62%), which also subsumes the old bottom-fade
+div. Side-edge jump now **0.54/255**. Item 6 now scans horizontally too.
+
+### 16.4 What is still not proven
+
+- **Absolute GPU cost on a real device.** SwiftShader says the shader dominates
+  a CPU rasteriser; it cannot say what a Mali/Adreno phone does. The mitigations
+  are now *verified to engage*, which is the part that was in doubt — but the
+  "is 1 dpr cheap enough on a ₱4,000 Android" question still needs hardware.
+  For reference, scaling the backing store on this rasteriser: dpr 1 → 87.7 ms,
+  0.75 → 70.5 ms, 0.5 → 58.7 ms, 0.35 → 48.5 ms per frame. Sub-linear, so the
+  fixed per-frame overhead dominates — dropping dpr below 1 buys less than the
+  fragment count suggests.
+- **Safari/iOS.** Chromium only, as in §13.8. `mask-composite` has a `-webkit-`
+  fallback in place but is unverified there.
+- **Real 3G.** The lazy/idle-gated chunk boundary is confirmed by request
+  counts, not by a throttled-network trace.
+
+---
+
+## 17. Mobile spacing pass on the landing page (2026-09-14)
+
+**Branch:** `arena/01a09e59-red-tide-ppc`
+**Scope:** spacing utilities only on `pages/Landing.tsx` and `components/Header.tsx`.
+No copy added, removed, reworded or shortened. No routing change.
+**Script:** `scripts/spacing-pass.mjs` · **Shots:** `docs/mobile-spacing-shots/`
+
+### 17.1 Responsive-strategy audit (the "confirm, don't rebuild" check)
+
+Asked first, before touching anything: is this app adapting with CSS, or with
+device-detection JS?
+
+| Checked for | Result |
+|---|---|
+| `userAgent` / `navigator.platform` / `navigator.vendor` / `maxTouchPoints` | **none** |
+| `isMobile` / `isTablet` / `isPhone` / `isDesktop` flags | **none** |
+| `window.innerWidth`-driven *conditional rendering* | **none** |
+| Tailwind responsive utilities | yes — `sm:` throughout, no JS branch |
+
+**Verdict: already CSS-only. Nothing was rebuilt.** The layout is pure Tailwind
+breakpoints and the changes below are additional spacing utilities.
+
+Three `window`/`matchMedia` reads do exist, and all three are legitimately
+*behavioural*, not layout:
+
+- `Waves.tsx` / `Ferrofluid.tsx` — canvas backing-store sizing. Has to be JS; a
+  canvas cannot size its own drawing buffer from CSS.
+- `BlurText.tsx` — `getBoundingClientRect` in the observer backstop (§16.3b).
+  Behaviour, not layout.
+
+**One thing worth flagging, not fixed here:** `DecryptedText.tsx` hard-codes
+`window.matchMedia('(max-width: 640px)')` to skip the scramble on phones. That
+is a real JS breakpoint and it duplicates Tailwind's `sm` (40rem) — if the theme
+ever retunes that breakpoint the two silently disagree. It is *not* layout
+(it gates an animation, and the text renders identically either way), so it is
+out of scope for a spacing pass, but it is the one maintenance trap in the file
+set and should be moved to a `matchMedia` on a shared token or a CSS-driven
+signal when that file is next touched.
+
+### 17.2 What changed
+
+A `min-[400px]:` step was introduced alongside `sm:` so the very narrow phones
+get their own treatment rather than inheriting the desktop-ish defaults.
+
+| Surface | Before → after (mobile) |
+|---|---|
+| Page gutter (`main`) | `px-4` (16px) → `px-5` (20px), `px-6` from 400px |
+| Header gutter | `px-4` → `px-5`, `px-6` from 400px — now aligns with the body column |
+| Header action gap | `gap-2` (8px) → `gap-2`/`gap-2.5` (8→10px at 400px) |
+| Header nav tap targets | 29px tall → **33px** (`py-1.5` → `py-2`) |
+| Header → hero | `pt-14` (56px) → `pt-20` (80px) |
+| Eyebrow → headline | `mt-3` → `mt-4` |
+| Headline → subheading | `mt-4` (16px) → `mt-5` (20px) |
+| Subheading → CTA row | `mt-8` (32px) → `mt-10` (40px) |
+| CTA wrap gap | `gap-y-3` → `gap-y-4` |
+| CTA → live readout | `mt-12` (48px) → `mt-14` (56px) |
+| Stat card padding | `py-2.5` → `py-3`; grid `gap-2` → `gap-2.5` |
+| Section gaps | `mt-12` → `mt-14` |
+| List item spacing | `space-y-2.5` (10px) → `space-y-3.5` (14px) |
+| Bullet gutter | `gap-2.5` → `gap-3` |
+| Footer | `py-6` → `py-7`, `gap-1.5` → `gap-2` |
+
+**Everything above `sm` is explicitly pinned to its previous value** (`sm:mt-3`,
+`sm:py-2.5`, `sm:space-y-2.5`, …), so the desktop layout verified in §16 is
+byte-for-byte unchanged — confirmed by measurement, see 17.4.
+
+### 17.3 Two regressions I introduced and then fixed
+
+Recorded because both were only visible in a screenshot, not in the numbers.
+
+**(a) `flex-wrap` on the header cluster made things worse.** The brief suggested
+wrapping at very narrow widths rather than squeezing. Tried it; measured it;
+reverted it. The cluster (DEMO + ADMIN + MAP) is wider than the space left after
+the brand, so it wrapped MAP onto its own line, took the header from **53px to
+97px (three rows)**, and *still* truncated the brand to "PUERTO PRINCESA,…". A
+sticky bar that eats 97px of a 780px phone viewport is a worse outcome than a
+tight gap. Kept `shrink-0` on one line instead.
+
+**(b) The brand truncated to "Red …" at 360px.** After widening the nav buttons,
+the cluster took 187px of the 320px usable width, leaving 80px for a title that
+needs 93px. Fixed by making the *eyebrow* yield instead of the product name:
+`hidden min-[380px]:block`, plus slightly tighter nav padding/tracking below
+400px (cluster 187px → **171px**). "Red Tide" now renders in full at 360px, and
+the eyebrow returns at 380px+ where there is room for both.
+
+### 17.4 Measured, in real Chromium
+
+`scripts/spacing-pass.mjs`, production build, same harness as §16.
+
+| Metric | 360px | 390px | 768px | 1280px |
+|---|---|---|---|---|
+| side padding L/R | 20/20 | 20/20 | 48/48 | 304/304 |
+| header height | 54 | 54 | 54 | 54 |
+| header → eyebrow | 80 | 80 | 96 | 96 |
+| headline → subheading | 20 | 20 | 16 | 16 |
+| subheading → CTA | 40 | 40 | 32 | 32 |
+| CTA → live readout | 56 | 56 | 64 | 64 |
+| list item gap | 14 | 14 | 10 | 10 |
+| nav gap / tap height | 8 / 33 | 8 / 33 | 10 / 33 | 10 / 33 |
+| **horizontal scroll** | **none** | **none** | **none** | **none** |
+| **element overflow** | **none** | **none** | **none** | **none** |
+
+768px and 1280px are identical to the pre-change values — the desktop pass in
+§16 still holds. Brand truncation: **false at every width**.
+
+Shared-`Header` regression check (it is also used by `/admin` and `/map`):
+`/admin` 360px header 53px, `/map` 360px overlay header 76px, `/admin` 1280px
+54px — no truncation, no horizontal scroll, passcode gate and Leaflet both
+still mount.
+
+`npm run typecheck`, `npm test` (167 passing) and `npm run build` all green.
+
+---
+
+## 18. One breakpoint, one source of truth (2026-09-14)
+
+**Branch:** `arena/01a09e59-red-tide-ppc`
+**Scope:** animation gating only. No layout or spacing change — verified, see 18.4.
+Closes the maintenance item flagged in §17.1.
+
+### 18.1 The problem
+
+`DecryptedText.tsx` skipped its scramble below the `sm` breakpoint via a
+hard-coded `matchMedia('(max-width: 640px)')`. That was a second, independent
+copy of a number the theme already owns.
+
+Worth stating precisely, because it is subtler than "two constants that might
+drift": Tailwind's `sm` is **`40rem`**, not `640px`. The two agreed only because
+the browser's default root font size is 16px. They were already different
+*kinds* of value:
+
+- Retune the theme → the JS gate silently keeps the old boundary.
+- A user who raises their browser's default font size → `40rem` becomes 800px
+  while the JS check stays pinned at 640px, so the gate disagrees with the
+  layout **on the same device, today**, with nobody having edited anything.
+
+### 18.2 Why Tailwind v4 makes this awkward
+
+This project is Tailwind v4 CSS-first — there is no `tailwind.config.js` to
+import from. And v4 **tree-shakes `@theme` tokens**: `--breakpoint-sm` drives
+the `sm:` variant at compile time but is not emitted, so
+`getComputedStyle(root).getPropertyValue('--breakpoint-sm')` reads empty at
+runtime. Confirmed by probing a build — `0` occurrences of `--breakpoint` in the
+compiled CSS.
+
+The lever that does work is `theme()`, which the compiler resolves and inlines.
+
+### 18.3 The fix
+
+`src/index.css` — declares the token once, then republishes it for JS:
+
+```css
+@theme {
+  --breakpoint-sm: 40rem;   /* drives every `sm:` utility */
+}
+
+:root {
+  --bp-sm: theme(--breakpoint-sm);  /* inlined at build time -> readable at runtime */
+}
+```
+
+`src/lib/breakpoints.ts` — the only place JS learns a breakpoint. Reads
+`--bp-sm`, resolves `rem` against the **actual** root font size, and exposes
+`isBelowSm()` built as `not all and (min-width: …)` — the exact complement of
+Tailwind's `sm:` condition, so the gate flips on precisely the pixel the layout
+does. Falls back to `40rem` (the same literal `index.css` declares) if no
+stylesheet has applied, and to measuring `innerWidth` if `matchMedia` is absent.
+
+`DecryptedText.tsx` — `smallViewport()` is now one call to `isBelowSm()`.
+**No pixel value is written in TypeScript anywhere.**
+
+### 18.4 Verified
+
+**The linkage, demonstrated rather than asserted.** Changed *only*
+`--breakpoint-sm: 40rem` → `48rem` and rebuilt:
+
+| | before | after one-line edit |
+|---|---|---|
+| `sm:` media queries | `@media (width>=40rem)` | `@media (width>=48rem)` |
+| JS token `--bp-sm` | `40rem` | `48rem` |
+| stale `40rem` left | — | **0** |
+
+Both moved together; no `.ts` file was touched. Reverted after.
+
+**In real Chromium**, production build:
+
+| viewport | `--bp-sm` | `isBelowSm()` | `main` padding-left |
+|---|---|---|---|
+| 375px | 40rem | true | 20px |
+| 639px | 40rem | **true** | 24px |
+| 640px | 40rem | **false** | 24px |
+| 1280px | 40rem | false | 24px |
+
+The flip lands exactly on 640 — Tailwind's `sm:` is `>= 40rem`, so 639 is below
+and 640 is not. Boundary behaviour is pinned by unit tests at 639/640 too.
+
+**Test suite:** 176 passing (was 167) across 17 files. `breakpoints.test.ts`
+adds 9, including the drift case (move the token, the resolved px follows) and
+the 20px-root-font case where `40rem` correctly resolves to 800px — the
+scenario the old hard-coded `640` got wrong.
+
+`DecryptedText.test.tsx`'s matchMedia fake previously keyed on the literal
+string `'(max-width: 640px)'`. It was updated to answer the new query shape;
+left alone it would have silently passed while testing nothing, which is worth
+noting as the kind of stale mock this sort of refactor leaves behind.
+
+**No layout change:** the §17 spacing sweep re-run at 360/390/768/1280 reports
+identical padding, header heights and gaps, with no horizontal scroll or
+overflow at any width. `git diff` on `index.css` touches no spacing utility.
+
+### 18.5 Remaining
+
+`--breakpoint-sm` is the only breakpoint JS consumes, so it is the only one
+republished. If another gate ever needs `md`/`lg`, add the matching
+`--bp-*: theme(--breakpoint-*)` line and a reader in `lib/breakpoints.ts` — do
+not reintroduce a literal.

@@ -17,12 +17,24 @@ vi.mock('motion/react', async (importOriginal) => {
   return { ...actual, useReducedMotion: () => reduceMotion }
 })
 
-/** Control what `(max-width: 640px)` reports. */
+/**
+ * Control whether the viewport reads as "below sm".
+ *
+ * The component no longer hard-codes a pixel value — it asks
+ * `lib/breakpoints.isBelowSm()`, which reads the `--bp-sm` token off `:root`
+ * and builds a `not all and (min-width: …)` query. So the fake has to answer
+ * that query shape rather than the old literal `(max-width: 640px)`.
+ *
+ * jsdom applies no stylesheet, so `--bp-sm` reads empty and the module falls
+ * back to `40rem` — which is exactly the value `index.css` declares, so the
+ * test still exercises the real boundary.
+ */
 function setViewportMatches(matches: boolean): void {
   vi.stubGlobal(
     'matchMedia',
     vi.fn().mockImplementation((query: string) => ({
-      matches: query === '(max-width: 640px)' ? matches : false,
+      // Any "below the breakpoint" query resolves to `matches`.
+      matches: /^not all and \(min-width:/.test(query) ? matches : false,
       media: query,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),

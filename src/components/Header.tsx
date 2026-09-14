@@ -38,8 +38,15 @@ export function Header({
       </span>
       <span className="min-w-0">
         {eyebrow && (
+          /*
+            The eyebrow is the first thing to go on a narrow screen. It is
+            secondary ("Puerto Princesa, Palawan" / "Admin"), and letting it
+            reserve width was squeezing the actual product name down to
+            "Red …" at 360px. `hidden min-[380px]:block` drops it below 380px
+            so the title always gets the full brand column.
+          */
           <span
-            className={`block truncate font-mono text-[9px] uppercase tracking-[0.18em] ${
+            className={`hidden truncate font-mono text-[9px] uppercase tracking-[0.18em] min-[380px]:block ${
               overlay ? 'text-paper/55' : 'text-faint'
             }`}
           >
@@ -85,11 +92,30 @@ export function Header({
 
   return (
     <header className="sticky top-0 z-[900] border-b border-line bg-ink/95 backdrop-blur-md">
-      <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2.5">
+      {/*
+        Gutter matches the page container (20px under 400px, 24px above) so the
+        brand lines up with the body copy instead of sitting closer to the edge.
+        Row height is unchanged at 54px — the extra breathing room on mobile is
+        bought with the page gutter and the hero spacing, not by a taller
+        sticky bar eating the first viewport.
+      */}
+      <div className="mx-auto flex max-w-5xl items-center gap-3 px-5 py-2.5 min-[400px]:px-6 sm:px-6">
         <Link to="/" className="flex min-w-0 items-center gap-2.5">
           {brand}
         </Link>
-        <div className="ml-auto flex shrink-0 items-center gap-2">{right}</div>
+        {/*
+          The action cluster. At 360px these sat 8px apart — ADMIN and MAP read
+          as one blob — so the gap is now 10px.
+
+          Deliberately NOT `flex-wrap`: letting it wrap was tried and measured
+          worse. The cluster is wider than the space left over once the brand
+          takes its share, so wrapping put MAP on its own line, pushed the
+          header from 53px to 97px (three rows) and truncated the brand to
+          "PUERTO PRINCESA,…". `shrink-0` keeps the cluster on one line and lets
+          the brand — which already has `min-w-0` and `truncate` — absorb the
+          pressure instead.
+        */}
+        <div className="ml-auto flex shrink-0 items-center gap-2 min-[400px]:gap-2.5">{right}</div>
       </div>
     </header>
   )
