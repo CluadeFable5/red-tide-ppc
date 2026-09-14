@@ -12,6 +12,13 @@
    =========================================================================== */
 
 @theme {
+  /* -- Breakpoints --------------------------------------------------------
+     Declared explicitly (rather than left to Tailwind's default) because this
+     is the ONE place the `sm` boundary is defined. It drives the `sm:` variant
+     in markup *and* the JS animation gate — see `--bp-sm` below and
+     `src/lib/breakpoints.ts`. Change it here and both follow.               */
+  --breakpoint-sm: 40rem;
+
   /* -- Ground ------------------------------------------------------------ */
   --color-ink: #080808;
   /* Raised surfaces: sheets, cards, popups. */
@@ -50,6 +57,22 @@
   --font-mono:
     "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
+}
+
+/* ---------------------------------------------------------------------------
+   Breakpoint, republished for JavaScript.
+
+   Tailwind v4 tree-shakes `@theme` tokens: `--breakpoint-sm` drives the `sm:`
+   variant at build time but is NOT emitted as a custom property, so
+   `getComputedStyle(...).getPropertyValue('--breakpoint-sm')` reads empty at
+   runtime. `theme(--breakpoint-sm)` is resolved by the compiler and inlined
+   here as a literal, so this declaration always carries the same value the
+   `sm:` variant was compiled with — one number, not two that happen to match.
+
+   Read it via `src/lib/breakpoints.ts`, never by hard-coding a pixel value.
+   --------------------------------------------------------------------------- */
+:root {
+  --bp-sm: theme(--breakpoint-sm);
 }
 
 /* ---------------------------------------------------------------------------

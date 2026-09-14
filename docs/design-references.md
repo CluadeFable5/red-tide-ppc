@@ -938,3 +938,108 @@ Shared-`Header` regression check (it is also used by `/admin` and `/map`):
 still mount.
 
 `npm run typecheck`, `npm test` (167 passing) and `npm run build` all green.
+
+---
+
+## 18. One breakpoint, one source of truth (2026-09-14)
+
+**Branch:** `arena/01a09e59-red-tide-ppc`
+**Scope:** animation gating only. No layout or spacing change — verified, see 18.4.
+Closes the maintenance item flagged in §17.1.
+
+### 18.1 The problem
+
+`DecryptedText.tsx` skipped its scramble below the `sm` breakpoint via a
+hard-coded `matchMedia('(max-width: 640px)')`. That was a second, independent
+copy of a number the theme already owns.
+
+Worth stating precisely, because it is subtler than "two constants that might
+drift": Tailwind's `sm` is **`40rem`**, not `640px`. The two agreed only because
+the browser's default root font size is 16px. They were already different
+*kinds* of value:
+
+- Retune the theme → the JS gate silently keeps the old boundary.
+- A user who raises their browser's default font size → `40rem` becomes 800px
+  while the JS check stays pinned at 640px, so the gate disagrees with the
+  layout **on the same device, today**, with nobody having edited anything.
+
+### 18.2 Why Tailwind v4 makes this awkward
+
+This project is Tailwind v4 CSS-first — there is no `tailwind.config.js` to
+import from. And v4 **tree-shakes `@theme` tokens**: `--breakpoint-sm` drives
+the `sm:` variant at compile time but is not emitted, so
+`getComputedStyle(root).getPropertyValue('--breakpoint-sm')` reads empty at
+runtime. Confirmed by probing a build — `0` occurrences of `--breakpoint` in the
+compiled CSS.
+
+The lever that does work is `theme()`, which the compiler resolves and inlines.
+
+### 18.3 The fix
+
+`src/index.css` — declares the token once, then republishes it for JS:
+
+```css
+@theme {
+  --breakpoint-sm: 40rem;   /* drives every `sm:` utility */
+}
+
+:root {
+  --bp-sm: theme(--breakpoint-sm);  /* inlined at build time -> readable at runtime */
+}
+```
+
+`src/lib/breakpoints.ts` — the only place JS learns a breakpoint. Reads
+`--bp-sm`, resolves `rem` against the **actual** root font size, and exposes
+`isBelowSm()` built as `not all and (min-width: …)` — the exact complement of
+Tailwind's `sm:` condition, so the gate flips on precisely the pixel the layout
+does. Falls back to `40rem` (the same literal `index.css` declares) if no
+stylesheet has applied, and to measuring `innerWidth` if `matchMedia` is absent.
+
+`DecryptedText.tsx` — `smallViewport()` is now one call to `isBelowSm()`.
+**No pixel value is written in TypeScript anywhere.**
+
+### 18.4 Verified
+
+**The linkage, demonstrated rather than asserted.** Changed *only*
+`--breakpoint-sm: 40rem` → `48rem` and rebuilt:
+
+| | before | after one-line edit |
+|---|---|---|
+| `sm:` media queries | `@media (width>=40rem)` | `@media (width>=48rem)` |
+| JS token `--bp-sm` | `40rem` | `48rem` |
+| stale `40rem` left | — | **0** |
+
+Both moved together; no `.ts` file was touched. Reverted after.
+
+**In real Chromium**, production build:
+
+| viewport | `--bp-sm` | `isBelowSm()` | `main` padding-left |
+|---|---|---|---|
+| 375px | 40rem | true | 20px |
+| 639px | 40rem | **true** | 24px |
+| 640px | 40rem | **false** | 24px |
+| 1280px | 40rem | false | 24px |
+
+The flip lands exactly on 640 — Tailwind's `sm:` is `>= 40rem`, so 639 is below
+and 640 is not. Boundary behaviour is pinned by unit tests at 639/640 too.
+
+**Test suite:** 176 passing (was 167) across 17 files. `breakpoints.test.ts`
+adds 9, including the drift case (move the token, the resolved px follows) and
+the 20px-root-font case where `40rem` correctly resolves to 800px — the
+scenario the old hard-coded `640` got wrong.
+
+`DecryptedText.test.tsx`'s matchMedia fake previously keyed on the literal
+string `'(max-width: 640px)'`. It was updated to answer the new query shape;
+left alone it would have silently passed while testing nothing, which is worth
+noting as the kind of stale mock this sort of refactor leaves behind.
+
+**No layout change:** the §17 spacing sweep re-run at 360/390/768/1280 reports
+identical padding, header heights and gaps, with no horizontal scroll or
+overflow at any width. `git diff` on `index.css` touches no spacing utility.
+
+### 18.5 Remaining
+
+`--breakpoint-sm` is the only breakpoint JS consumes, so it is the only one
+republished. If another gate ever needs `md`/`lg`, add the matching
+`--bp-*: theme(--breakpoint-*)` line and a reader in `lib/breakpoints.ts` — do
+not reintroduce a literal.

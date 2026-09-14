@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'motion/react'
+import { isBelowSm } from '../lib/breakpoints'
 
 /**
  * "Decryption" headline: every character starts life as a random glyph and
@@ -31,13 +32,14 @@ const START_TICKS = 2
  * Below the `sm` breakpoint the scramble is skipped: it is decoration the
  * layout gets no value from, and setInterval churn on a low-end phone is
  * exactly the jank the landing page cannot afford.
+ *
+ * The boundary comes from `isBelowSm()`, which reads the same `--breakpoint-sm`
+ * token the `sm:` utilities are compiled from (see `src/lib/breakpoints.ts`).
+ * This used to be a hard-coded `(max-width: 640px)` — a second copy of the
+ * number that agreed with the theme only by coincidence.
  */
 function smallViewport(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 640px)').matches
-  )
+  return isBelowSm()
 }
 
 function scrambled(text: string): string {
