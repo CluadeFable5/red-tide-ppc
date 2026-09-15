@@ -264,7 +264,8 @@ verified with `typecheck` + `build` + `test` (66/66) before committing.
   Entrance is animated; close stays crisp. Documented in `ZonePopup.tsx`.
 - **Route transitions are opacity-only.** Animating transform/filter on an ancestor of a
   live Leaflet map risks a mis-measured canvas. Opacity removes the hard cut without
-  touching the map's coordinate space.
+  touching the map's coordinate space. *(Superseded for the landing ↔ map pass by §19,
+  which re-examined the Leaflet reasoning and found it was only half right; see there.)*
 
 ### New module in the design layer
 
@@ -1043,3 +1044,70 @@ overflow at any width. `git diff` on `index.css` touches no spacing utility.
 republished. If another gate ever needs `md`/`lg`, add the matching
 `--bp-*: theme(--breakpoint-*)` line and a reader in `lib/breakpoints.ts` — do
 not reintroduce a literal.
+
+## 19. Route-entry transition for /map — and what the old "opacity-only" rule got wrong (2026-09-15)
+
+**Branch:** `arena/01a0a2ec-red-tide-ppc` → `main`
+**Scope:** presentation only. `store.ts`, `firebase.ts`, `data/**`, `hooks/**` untouched; the
+sheet/anchor mechanics (§13) and the routing structure are unchanged. Verified with
+`npm run typecheck`, `npm run build`, `npm test` (178 passing across 18 files) and a
+real-browser pass, `scripts/route-transition-pass.mjs`.
+
+### 19.1 What changed
+
+The landing → map handover went from a 200ms opacity cross-fade to a quick, purposeful
+entry: the incoming page fades in over 300ms with a 1.5% scale-up and a 12px rise
+(ease-out-quint, `--ease-out-quint`), while the outgoing page leaves over a shorter 120ms
+accelerating fade. `mode="wait"` keeps the two strictly sequential, so the whole handover
+is ~420ms of which the part the eye follows — the map arriving — is the 300ms. The same
+wrapper drives `/admin` and the reverse directions (brand link, browser back).
+
+`prefers-reduced-motion: reduce` gets an *instant* swap, not a shorter fade: `initial={false}`,
+no `exit`, and no transform keys, so nothing is ever written to the element. `Landing.tsx`'s map
+CTAs prefetch the lazy `/map` chunk on pointer-enter/focus so the transition is not paying for a
+network round trip mid-animation — deliberately *not* on load, preserving the lazy boundary
+documented in §14.3.
+
+### 19.2 Why transform is now allowed (the old rule was half right)
+
+§12's "opacity-only" note was based on the idea that a transformed ancestor makes Leaflet
+mis-measure its container. Checking against the actual Leaflet source and in a real browser,
+that is only half right:
+
+- Leaflet sizes itself from `container.clientWidth/clientHeight` — *layout* boxes, which a
+  CSS transform on an ancestor does not change. The map therefore measures identically
+  mid-animation and at rest.
+- Leaflet 1.9 maps pointer coordinates through `DomUtil.getScale()`
+  (`getBoundingClientRect()` over `offsetWidth`), i.e. it already accounts for a scaled
+  container. (Same reason MapPage's underlay is allowed to scale the map as the sheet
+  rises; see `Map.tsx`.)
+
+What a transformed ancestor *does* change is the containing block: a `position: fixed`
+descendant resolves against it instead of the viewport, and MapPage's map layer is exactly
+that (`fixed inset-0`). Two things keep that from happening: the animation ends on identity
+values, and `onAnimationComplete` clears the inline transform outright. The browser pass
+asserts the frame at rest carries no transform/opacity/filter and that the `fixed` map layer's
+box is exactly the viewport.
+
+### 19.3 What the browser pass verifies
+
+`scripts/route-transition-pass.mjs` runs the production build in real Chromium. `motion`
+drives the frame through the Web Animations API, so it reads the real duration/keyframes and
+pauses an animation at a chosen `currentTime` for exact mid-flight screenshots
+(`docs/route-transition-shots/`), with a rAF trace of computed styles as corroboration. It
+checks: forward and reverse navigation animate in budget and never double-mount a page;
+Leaflet's container, map pane, tiles and zone polygons are identical after the animated entry
+and on a plain `/map` load; the reduced-motion swap is instant both ways; a scrolled landing
+still lands the map at the viewport origin; the map chunk is prefetched on hover; and
+`MapLoadingOverlay` sits on top of the transitioned-in map when the zone feed is slow
+(checked against a build whose first zone emit is delayed). 12/12 assertions pass.
+
+Two pre-existing observations, measured rather than assumed:
+
+- The post-click main thread is blocked ~2.2s in this software-rendered sandbox by the `/map`
+  chunk executing plus Leaflet mounting. The same block measured **2237ms on the pre-change
+  build**, so it pre-dates this pass and is CPU-bound — far smaller on real hardware. It is why
+  the handover can read as a pause here, and why `prefetchMapPage` helps on a real connection.
+- `index.html` carries a `<link rel="modulepreload">` for the leaflet chunk, so it downloads on
+  the landing page too. Identical in a build of the pre-change commit — pre-existing, unrelated
+  to this pass, and worth revisiting only alongside the §14.3 lazy-boundary decision.

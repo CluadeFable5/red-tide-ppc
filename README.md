@@ -240,7 +240,7 @@ src/
     ferrofluid/           # the `ogl` shader itself — reach it only via HeroBackdrop
     Map.test.tsx          # regression: the zone-path classes in a production render
   motion/
-    RouteTransition.tsx   # map <-> admin cross-fade
+    RouteTransition.tsx   # landing <-> map <-> admin route transition (fade + rise; see docs §19)
     sheetAnchors.ts       # peek/mid/full maths + snap + underlay (pure, tested)
     readouts.ts           # data-derived sheet copy + gauge wave (pure, tested)
     useZoneSheet.ts       # sheet position/anchors + underlay motion values

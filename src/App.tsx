@@ -13,8 +13,31 @@ import { useAppStore } from './store'
  * chunks (vite.config manualChunks), so /map's extra download is just the
  * map-page code.
  */
+let mapPageModule: Promise<typeof import('./pages/MapPage')> | null = null
+
+/**
+ * Start fetching the /map chunk without mounting anything.
+ *
+ * The map is lazy, and a lazy route behind a route transition has a specific
+ * failure mode: the outgoing page fades out, then the browser spends the
+ * round trip fetching the incoming chunk while the incoming frame sits at
+ * opacity 0 — which reads as a dead beat in the middle of the animation. The
+ * landing page calls this on pointer-enter/focus of either map CTA, so the
+ * chunk is normally already in cache by the time the click lands and the
+ * transition runs start to finish.
+ *
+ * Deliberately *not* called on load: the whole point of the lazy boundary is
+ * that the landing page and /admin never download the map (see
+ * vite.config.ts `manualChunks` and docs/design-references.md §14.3), and an
+ * idle prefetch would spend that budget on people who never open the map.
+ */
+export function prefetchMapPage() {
+  mapPageModule ??= import('./pages/MapPage')
+  return mapPageModule
+}
+
 const MapPage = lazy(() =>
-  import('./pages/MapPage').then((module) => ({ default: module.MapPage })),
+  prefetchMapPage().then((module) => ({ default: module.MapPage })),
 )
 
 function MapLoadingFallback() {
