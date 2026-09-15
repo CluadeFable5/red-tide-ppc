@@ -8,6 +8,7 @@ import { Header } from '../components/Header'
 import { HeroBackdrop } from '../components/HeroBackdrop'
 import { StatusPip } from '../components/StatusPip'
 import { Waves } from '../components/Waves'
+import { prefetchMapPage } from '../App'
 import { dominantZoneStatus } from '../motion/readouts'
 import { zoneTheme } from '../styles/statusTheme'
 import { selectPendingCountByZone, useAppStore } from '../store'
@@ -51,6 +52,16 @@ import type { ZoneStatus } from '../types'
  * The "How it works" steps. Extracted only so each can carry its own scroll
  * trigger — the strings are unchanged from what shipped.
  */
+/**
+ * Every route into /map starts the map chunk downloading on hover/focus, so the
+ * route transition is not paying for a network round trip mid-animation.
+ * See `prefetchMapPage` in App.tsx for why this is not done on page load.
+ */
+const MAP_CTA_PREFETCH = {
+  onPointerEnter: prefetchMapPage,
+  onFocus: prefetchMapPage,
+} as const
+
 const HOW_IT_WORKS = [
   'Find your shore — six zones cover the coast, from the city bay to St. Paul Bay.',
   'Report what you see — water colour, dead shellfish; ten words is enough.',
@@ -100,6 +111,7 @@ export function Landing() {
               </Link>
               <Link
                 to="/map"
+                {...MAP_CTA_PREFETCH}
                 className="rounded-md border border-line bg-ink-2/85 px-2.5 py-2 font-mono text-[10px] uppercase tracking-[0.08em] text-paper/75 transition-colors hover:border-accent/40 hover:text-accent min-[400px]:px-3 min-[400px]:tracking-[0.12em] sm:px-2.5 sm:py-1.5"
               >
                 Map
@@ -170,12 +182,14 @@ export function Landing() {
               <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4 sm:mt-8 sm:gap-y-3">
               <Link
                 to="/map"
+                {...MAP_CTA_PREFETCH}
                 className="rounded-lg bg-accent px-6 py-3 text-base font-semibold text-ink transition hover:brightness-110 active:scale-95"
               >
                 Open the map
               </Link>
                 <Link
                   to="/map"
+                  {...MAP_CTA_PREFETCH}
                   className="text-sm font-medium text-paper/80 underline-offset-4 transition-colors hover:text-accent hover:underline"
                 >
                   Report a sighting
