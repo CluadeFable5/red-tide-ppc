@@ -1,3 +1,4 @@
+import { LiveDataStatus } from '../components/LiveDataStatus'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AdminGate } from '../components/AdminGate'
@@ -25,6 +26,10 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'reviewed', label: 'Reviewed' },
   { id: 'zones', label: 'Zones' },
 ]
+
+const ADMIN_CONTAINER =
+  'w-full max-w-3xl px-5 min-[400px]:px-6 md:max-w-4xl md:px-8 lg:max-w-6xl xl:max-w-7xl xl:px-10 2xl:max-w-[100rem] 2xl:px-12'
+const REPORT_GRID = 'grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-3'
 
 const ZONE_STATUS_CHOICES: ZoneStatus[] = ['safe', 'unconfirmed', 'advisory']
 
@@ -62,7 +67,9 @@ function AdminDashboard() {
 
   return (
     <div className="min-h-full">
+      <LiveDataStatus admin />
       <Header
+        containerClassName={ADMIN_CONTAINER}
         eyebrow="Red Tide PPC"
         title="Report review"
         right={
@@ -83,10 +90,9 @@ function AdminDashboard() {
           </>
         }
       />
-      <DemoBanner />
-
-      <main className="mx-auto max-w-3xl px-4 pb-16 pt-5 sm:pt-7">
-        <div className="grid grid-cols-3 gap-3">
+      <main className={`mx-auto pb-16 pt-5 sm:pt-7 ${ADMIN_CONTAINER}`}>
+        <div className="mb-5"><DemoBanner /></div>
+        <div className="mb-5 grid grid-cols-3 gap-3 md:gap-4">
           <Stat label="Pending" value={pendingReports.length} tone="amber" />
           <Stat label="Under advisory" value={advisoryZones.length} tone="red" />
           <Stat label="Total reports" value={reports.length} tone="slate" />
@@ -126,7 +132,7 @@ function AdminDashboard() {
         {tab === 'pending' && (
           <section className="mt-5" aria-label="Pending reports">
             {!reportsReady ? (
-              <ReportQueueSkeleton />
+              <ReportQueueSkeleton className={REPORT_GRID} />
             ) : pendingReports.length === 0 ? (
               <EmptyState
                 title="Nothing waiting for review"
@@ -139,7 +145,7 @@ function AdminDashboard() {
                   immediately. Rejecting dismisses the report and leaves the zone
                   unchanged.
                 </p>
-                <ul className="space-y-3">
+                <ul className={REPORT_GRID}>
                   {pendingReports.map((report) => (
                     <ReportCard
                       key={report.id}
@@ -164,7 +170,7 @@ function AdminDashboard() {
                 body="Reports you approve or reject are archived here."
               />
             ) : (
-              <ul className="space-y-3">
+              <ul className={REPORT_GRID}>
                 {reviewedReports.map((report) => (
                   <ReportCard
                     key={report.id}
@@ -186,14 +192,14 @@ function AdminDashboard() {
               Zone status only changes here — there is no automatic expiry. Revert
               a zone to <strong>Safe</strong> yourself once the water is cleared.
             </p>
-            <ul className="space-y-3">
+            <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {zones.map((zone) => {
                 const busy = busyZoneId === zone.id
 
                 return (
                   <li
                     key={zone.id}
-                    className="rounded-xl border border-line bg-ink-2 p-4"
+                    className="min-w-0 rounded-xl border border-line bg-ink-2 p-4 lg:p-5"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -275,10 +281,10 @@ function Stat({
         : 'text-paper/80'
 
   return (
-    <div className="rounded-xl border border-line bg-ink-2 p-3">
+    <div className="min-w-0 rounded-xl border border-line bg-ink-2 p-3 lg:p-5">
       {/* Bebas Neue for the number: at a glance, the count is what an admin
           needs, and the condensed face reads larger in the same space. */}
-      <p className={`font-display text-3xl leading-none tabular-nums ${toneClass}`}>
+      <p className={`font-display text-3xl leading-none tabular-nums lg:text-5xl ${toneClass}`}>
         {value}
       </p>
       <p className="mt-1.5 font-mono text-[9px] uppercase tracking-[0.14em] text-faint">

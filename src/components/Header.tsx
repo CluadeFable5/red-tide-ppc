@@ -15,11 +15,14 @@ export function Header({
   title,
   right,
   overlay = false,
+  containerClassName = 'max-w-5xl px-5 min-[400px]:px-6 sm:px-6',
 }: {
   eyebrow?: string
   title: string
   right?: ReactNode
   overlay?: boolean
+  /** Opt-in page sizing; default and map overlay layouts stay unchanged. */
+  containerClassName?: string
 }) {
   const brand = (
     <>
@@ -81,7 +84,7 @@ export function Header({
             >
               {brand}
             </Link>
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <div className="pointer-events-auto ml-auto flex shrink-0 items-center gap-1.5">
               {right}
             </div>
           </div>
@@ -99,7 +102,7 @@ export function Header({
         bought with the page gutter and the hero spacing, not by a taller
         sticky bar eating the first viewport.
       */}
-      <div className="mx-auto flex max-w-5xl items-center gap-3 px-5 py-2.5 min-[400px]:px-6 sm:px-6">
+      <div className={`mx-auto flex items-center gap-3 py-2.5 ${containerClassName}`}>
         <Link to="/" className="flex min-w-0 items-center gap-2.5">
           {brand}
         </Link>
