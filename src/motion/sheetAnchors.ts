@@ -345,26 +345,39 @@ export function chromeOpacity(progress: number, fadeUntil = 0.35): number {
  * back down from full to mid/peek it fades back in promptly rather than staying
  * invisible or fading late.
  *
- * Fully visible until 60% progress (which is past mid at 0.48), then fades to
+ * Fully visible until 65% progress (which is past mid at 0.48), then fades to
  * 0 by 100% (full) with smoothstep easing so a fast flick peek→full (skipping
- * mid) doesn't look like a glitch — the fade is spread over 40% of travel
- * (0.6→1.0) with S-curve easing, not an abrupt linear cut in the last 30%.
+ * mid) doesn't look like a glitch — the fade is spread over 35% of travel
+ * (0.65→1.0) with S-curve easing, not an abrupt linear cut in the last 30%.
  *
- * - 0.6 threshold keeps mid (0.48) fully visible with margin, while giving
- *   more distance for fade than 0.7→1.0 (40% vs 30% of sheet travel).
+ * Safety margin analysis (tested at heights 300-1366):
+ * - mid progress is constant 0.4795 for all viewport heights (0.35/0.73), because
+ *   sheetOffsets uses same ratios: peek 0.85h, mid 0.5h, full 0.12h, span 0.73h,
+ *   progress_mid = (0.85-0.5)/0.73 = 0.4795. So no height pushes mid above threshold.
+ * - With 0.6 threshold, margin = 0.12 = 8.8% viewport = 35px @400px, 58px @667px,
+ *   26px @300px keyboard — a bit tight on very short phones.
+ * - With 0.65 threshold, margin = 0.1705 = 12.4% viewport = 50px @400px, 83px @667px,
+ *   37px @300px keyboard — more comfortable, still prompt fade-in by 65%,
+ *   and fade range 0.35 vs 0.40 (duration ~102ms vs 116ms) still smooth with
+ *   5+ intermediate frames, not jarring.
+ * - Original 0.7 threshold had margin 0.22 = 16% viewport = 64px @400, 107px @667,
+ *   but fade range only 0.30 (87ms) more abrupt.
+ * - 0.65 is a good compromise: comfortable margin on small phones, smooth fade,
+ *   prompt fade-in by 65% when dragging down from full.
+ *
  * - smoothstep t*t*(3-2*t) makes fade start gently, accelerate mid, then ease
  *   out near full — less jarring during fast spring (stiffness 420) where
- *   peek→full settles in ~300ms; fade now lasts ~120ms of that instead of ~90ms.
+ *   peek→full settles in ~300ms; fade now lasts ~102ms with S-curve.
  * - For reduced-motion, progress jumps instantly (offsetY.jump), so opacity
- *   swaps instantly 1→0 at same 0.6 threshold with no animated fade, consistent
+ *   swaps instantly 1→0 at same 0.65 threshold with no animated fade, consistent
  *   with rest of sheet (spring disabled, jump).
  *
- * So mid/peek = 1, full = 0, prompt fade-in by 60% when dragging down.
+ * So mid/peek = 1, full = 0, prompt fade-in by 65% when dragging down.
  */
 export function headerOpacity(progress: number): number {
   const p = clamp01(progress)
-  const t = clamp01((p - 0.6) / 0.4)
-  // smoothstep for less jarring dismissal
+  const t = clamp01((p - 0.65) / 0.35)
+  // smoothstep for less jarring dismissal, with comfortable margin for mid
   const smooth = t * t * (3 - 2 * t)
   return 1 - smooth
 }

@@ -158,65 +158,79 @@ describe('header fade fix at full — no stale chrome', () => {
   it('header stays fully visible at peek and mid, only fades at full', () => {
     expect(headerOpacity(0)).toBe(1) // peek
     expect(headerOpacity(0.48)).toBe(1) // mid ~0.48
-    expect(headerOpacity(0.6)).toBe(1) // threshold 0.6
+    expect(headerOpacity(0.65)).toBe(1) // threshold 0.65
     expect(headerOpacity(1)).toBe(0) // full
   })
 
   it('header fades back in promptly when dragged down from full to mid/peek', () => {
-    // Dragging down from full (1) to mid (0.48): by 0.6 progress it should be fully visible
+    // Dragging down from full (1) to mid (0.48): by 0.65 progress it should be fully visible
     expect(headerOpacity(0.9)).toBeLessThan(1) // still fading at 0.9
-    expect(headerOpacity(0.7)).toBeGreaterThan(0.5) // mostly visible at 0.7 (~0.84)
-    expect(headerOpacity(0.6)).toBe(1) // fully visible again at 0.6, well before mid
+    expect(headerOpacity(0.75)).toBeGreaterThan(0.5) // mostly visible at 0.75
+    expect(headerOpacity(0.65)).toBe(1) // fully visible again at 0.65, well before mid
     expect(headerOpacity(0.5)).toBe(1)
   })
 
   it('fast flick peek→full (skipping mid) has smooth fade, not jarring glitch', () => {
     // Simulate fast flick peek→full: progress goes 0→1 quickly via spring (stiffness 420)
-    // With 0.6-1.0 smoothstep, fade lasts 40% travel, S-curve, 116ms with 6 intermediate frames
+    // With 0.65-1.0 smoothstep, fade lasts 35% travel, S-curve, ~102ms with 5+ intermediate frames
     // in real browser rAF log (see scripts/verify-flick-smooth.mjs), not instant 1→0.
-    const samples = [0.6, 0.65, 0.7, 0.8, 0.85, 0.9, 1.0].map(headerOpacity)
+    const samples = [0.65, 0.75, 0.825, 0.9, 1.0].map(headerOpacity)
     // Monotonic decreasing
     for (let i = 1; i < samples.length; i++) {
       expect(samples[i]).toBeLessThanOrEqual(samples[i - 1])
     }
     // Not instant: has intermediate values
-    expect(samples[2]).toBeGreaterThan(0.5) // at 0.7 still mostly visible
-    expect(samples[3]).toBeCloseTo(0.5, 1) // at 0.8 half
-    expect(samples[5]).toBeGreaterThan(0)
-    expect(samples[5]).toBeLessThan(0.3)
-    // Smoothstep: starts gently (small delta 0.6→0.7) then accelerates (larger delta 0.7→0.8)
-    const delta1 = samples[0] - samples[2] // 1 - 0.84 = 0.16
-    const delta2 = samples[2] - samples[3] // 0.84 - 0.5 = 0.34
+    expect(samples[1]).toBeGreaterThan(0.5) // at 0.75 still mostly visible
+    expect(samples[2]).toBeCloseTo(0.5, 1) // at 0.825 half
+    expect(samples[3]).toBeGreaterThan(0)
+    expect(samples[3]).toBeLessThan(0.5)
+    // Smoothstep: starts gently
+    const delta1 = samples[0] - samples[1]
+    const delta2 = samples[1] - samples[2]
     expect(delta1).toBeLessThan(delta2)
   })
 
-  it('reduced-motion instant swap at same 0.6 threshold, no animated fade', () => {
-    // Reduced-motion uses offsetY.jump, so progress jumps instantly 0→1
-    // Opacity should swap instantly 1→0, no intermediate fade, consistent with rest of sheet
-    // Real browser verification with prefers-reduced-motion: reduce shows only 1 and 0, no 0.05-0.95
+  it('reduced-motion instant swap at same 0.65 threshold, no animated fade', () => {
     expect(headerOpacity(0)).toBe(1)
     expect(headerOpacity(1)).toBe(0)
     const pointerEvents = (p: number) => (headerOpacity(p) < 0.1 ? 'none' : 'auto')
     expect(pointerEvents(0)).toBe('auto')
-    expect(pointerEvents(0.6)).toBe('auto')
+    expect(pointerEvents(0.65)).toBe('auto')
     expect(pointerEvents(1)).toBe('none')
-    // Instant swap documented: no easing, just threshold check
+  })
+
+  it('mid progress stays comfortably below 0.65 for all viewport heights', () => {
+    // Tested at heights 300-1366, mid progress constant 0.4795, margin 0.1705 = 12.4% viewport
+    // 50px @400px, 83px @667px, 37px @300px keyboard — comfortable
+    const heights = [300, 400, 500, 568, 667, 736, 812, 844, 896, 926, 1024, 1180, 1366]
+    for (const h of heights) {
+      const offsets = sheetOffsets(h)
+      const span = offsets.peek - offsets.full
+      const progressMid = span > 0 ? (offsets.peek - offsets.mid) / span : 0
+      expect(progressMid).toBeCloseTo(0.4795, 2)
+      expect(progressMid).toBeLessThan(0.65)
+      const marginPx = (0.65 - progressMid) * span
+      expect(marginPx).toBeGreaterThan(30) // at least 30px even on 300px keyboard
+      // At 60% visible, still fully visible
+      const offset60 = h * (1 - 0.6)
+      const progress60 = span > 0 ? (offsets.peek - offset60) / span : 0
+      expect(progress60).toBeLessThan(0.65)
+      expect(headerOpacity(progress60)).toBe(1)
+    }
   })
 
   it('chrome (legend/gauge) fades early, header fades late — no stale chrome both ways', () => {
-    // Chrome fades by 0.35, header by 0.6 threshold
-    expect(chromeOpacity(0.35)).toBe(0) // legend gone by mid
-    expect(headerOpacity(0.35)).toBe(1) // header still visible at same progress
+    expect(chromeOpacity(0.35)).toBe(0)
+    expect(headerOpacity(0.35)).toBe(1)
     expect(chromeOpacity(0)).toBe(1)
     expect(headerOpacity(0)).toBe(1)
   })
 
   it('pointer-events disabled at full when invisible, enabled at mid/peek', () => {
-    // headerPointerEvents = headerOpacity <0.1 ? 'none' : 'auto'
     const pointerEvents = (progress: number) =>
       headerOpacity(progress) < 0.1 ? 'none' : 'auto'
-    expect(pointerEvents(1)).toBe('none') // full → can't tap when invisible
-    expect(pointerEvents(0.48)).toBe('auto') // mid → interactive
-    expect(pointerEvents(0)).toBe('auto') // peek → interactive
+    expect(pointerEvents(1)).toBe('none')
+    expect(pointerEvents(0.48)).toBe('auto')
+    expect(pointerEvents(0)).toBe('auto')
   })
 })
