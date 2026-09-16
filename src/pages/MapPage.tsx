@@ -1,3 +1,4 @@
+import { LiveDataStatus } from '../components/LiveDataStatus'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'motion/react'
@@ -100,6 +101,7 @@ export function MapPage() {
 
   return (
     <div className="relative h-[100dvh] overflow-hidden bg-ink">
+      <LiveDataStatus />
       {/* ------------------------------------------------------------------
           Layer 1 + 2: the map and its underlay.
           The recede is driven entirely by the sheet's progress value — scale

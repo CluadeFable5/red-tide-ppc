@@ -34,7 +34,7 @@ export function ReportCard({
 
   return (
     <li
-      className={`relative overflow-hidden rounded-xl border bg-ink-2 transition-colors duration-200 ${
+      className={`relative min-w-0 overflow-hidden rounded-xl border bg-ink-2 transition-colors duration-200 ${
         isPending ? 'border-line hover:border-line-soft' : 'border-line/60'
       }`}
     >
@@ -45,7 +45,7 @@ export function ReportCard({
         aria-hidden="true"
       />
 
-      <div className="p-4 pl-5">
+      <div className="p-4 pl-5 [overflow-wrap:anywhere] lg:p-5 lg:pl-6">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-display rounded-md border border-line bg-ink-3 px-2 py-1 text-sm leading-none text-paper">
             {zoneName}

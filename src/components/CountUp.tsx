@@ -87,17 +87,17 @@ export function CountUp({
     }
   }, [to, inView, reduceMotion, duration])
 
-  const text =
-    prefix +
-    value.toLocaleString('en-US', {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    }) +
-    suffix
+  const formatValue = (number: number) => prefix + number.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }) + suffix
 
   return (
     <span ref={spanRef} className={`tabular-nums ${className}`}>
-      {text}
+      {/* Assistive tech gets the source value, never a stream of tween frames.
+          LiveDataStatus owns update announcements for the page. */}
+      <span aria-hidden="true">{formatValue(value)}</span>
+      <span className="sr-only">{formatValue(to)}</span>
     </span>
   )
 }

@@ -264,3 +264,25 @@ describe('photo attachment', () => {
     expect(photoUrl!.startsWith('data:image/jpeg;base64,')).toBe(true)
   })
 })
+
+describe('live data announcement routing', () => {
+  it('keeps one data channel per public/admin page, but none in the locked gate', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const channel = () => screen.getByRole('status', { name: 'Live coastal data' })
+    await waitFor(() => expect(channel().textContent).toContain('6 zones watched'))
+    expect(screen.getAllByRole('status', { name: 'Live coastal data' })).toHaveLength(1)
+
+    await openMap(user)
+    await waitFor(() => expect(channel().textContent).toContain('6 zones watched'))
+    expect(screen.getAllByRole('status', { name: 'Live coastal data' })).toHaveLength(1)
+
+    await user.click(screen.getByRole('link', { name: 'Admin' }))
+    await screen.findByLabelText('Passcode')
+    expect(screen.queryByRole('status', { name: 'Live coastal data' })).toBeNull()
+    await user.type(screen.getByLabelText('Passcode'), PASSCODE)
+    await user.click(screen.getByRole('button', { name: 'Unlock' }))
+    await waitFor(() => expect(channel().textContent).toContain('0 total reports'))
+    expect(screen.getAllByRole('status', { name: 'Live coastal data' })).toHaveLength(1)
+  })
+})

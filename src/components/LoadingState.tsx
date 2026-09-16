@@ -122,10 +122,10 @@ export function ZoneListSkeleton({ count = 4 }: { count?: number }) {
 }
 
 /** Skeleton for the admin review queue. */
-export function ReportQueueSkeleton({ count = 3 }: { count?: number }) {
+export function ReportQueueSkeleton({ count = 3, className = 'space-y-3' }: { count?: number; className?: string }) {
   return (
     <ul
-      className="space-y-3"
+      className={className}
       role="status"
       aria-busy="true"
       aria-label="Loading reports"
