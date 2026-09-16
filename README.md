@@ -1,3 +1,259 @@
+# Red Tide PPC
+
+**Community-driven red tide (PSP) advisory map and report tracker for the coastal waters of Puerto Princesa, Palawan.**
+
+A public map of coastal zones colour-coded by advisory status, an anonymous way for anyone on the water to report what they are seeing, and a passcode-gated admin view that turns a credible report into a zone-wide advisory.
+
+---
+
+## 1. The problem, in plain English
+
+### What is a red tide?
+
+"Red tide" — *pula ang dagat* in Filipino — is a **bloom of microscopic algae**. Under the right conditions (warm water, calm seas, nutrient runoff) certain single-celled organisms multiply explosively. In the Philippines the usual culprits are *Pyrodinium bahamense* and *Alexandrium* species.
+
+The water can turn reddish-brown, but **not always**. A bloom can be dangerous while the sea still looks perfectly normal, which is exactly why a name based on colour is not enough on its own.
+
+### Why it makes people sick
+
+Some of those organisms produce **saxitoxin**, a nerve poison. Shellfish — *tahong* (mussels), *talaba* (oysters), *halaan* (clams), *tuway*, and *alamang* (small shrimp) — feed by filtering seawater, so the toxin concentrates inside their flesh.
+
+Eating contaminated shellfish causes **Paralytic Shellfish Poisoning (PSP)**:
+
+- Symptoms usually begin **30 minutes to 2 hours** after eating.
+- It starts as tingling or numbness around the mouth, tongue and face, then spreads to the arms and legs.
+- Severe cases progress to **respiratory paralysis** and can be fatal within 12 hours.
+- **There is no antidote.** Treatment is supportive care — keeping the person breathing until the toxin wears off.
+
+Three things people often get wrong, and this app repeats deliberately:
+
+| Myth | Reality |
+| --- | --- |
+| "Cooking kills it." | **No.** Boiling, frying, grilling, vinegar and chili do **not** destroy saxitoxin. |
+| "If it smells and tastes fine, it is safe." | **No.** Contaminated shellfish look, smell and taste normal. |
+| "All seafood from that water is dangerous." | **No.** Fish, squid, shrimp and crab are generally safe if they are fresh, have their gills and intestines removed, and are washed under running water before cooking. The toxin sits in the organs, not the meat. |
+
+### Who decides officially?
+
+The **Bureau of Fisheries and Aquatic Resources (BFAR)** tests shellfish and seawater and publishes shellfish bulletins and advisories. The Philippine regulatory limit is **60 µg of saxitoxin per 100 g of shellfish meat**; above that, gathering and selling shellfish from the area is banned.
+
+### The gap this project targets
+
+Official testing is authoritative but **slow to reach a specific cove**, and it cannot cover every shoreline every day. Meanwhile the people who notice first are the ones already on the water: fishers, *gleaners*, boat operators, resort staff, residents walking the shore at low tide.
+
+Red Tide PPC gives those sightings somewhere to go, and gives a local reviewer a fast way to raise a visible warning for one specific zone — while being explicit that **it is not a substitute for a BFAR advisory**.
+
+---
+
+## 2. What the app does
+
+**Routes**
+
+- `/` — the landing page: what this is, the live zone readout and figures, and the way in.
+- `/map` — the public map (lazy-loaded; the landing and admin never pay for Leaflet).
+- `/admin` — the passcode-gated review queue.
+
+**Core loop**
+
+1. **Public map at `/map`** — a Leaflet map of the Puerto Princesa coastline. Each zone is a coloured polygon traced against the actual shoreline:
+   - 🟢 **Safe** — no advisory recorded.
+   - 🟡 **Unconfirmed** — flagged by an admin as needing a check; treat with caution.
+   - 🔴 **Advisory** — confirmed; do not eat shellfish from this zone.
+2. **Tap a zone** → a popup shows the name, current status, plain-language guidance, how many community reports are waiting for review, and when the status last changed — plus a **"Report something here"** button.
+3. **Report form** — a description plus an optional photo. No account, no name, no login. The report is written to Firestore with status `pending`.
+4. **Admin view at `/admin`** — behind a passcode. Pending reports are listed with zone, description, photo and timestamp.
+   - **Approve** → the report becomes `confirmed` **and** its zone becomes `advisory` with `lastUpdated = now`.
+   - **Reject** → the report becomes `rejected` and the zone is left exactly as it was.
+5. **Manual control only** — zone status never changes by itself. When the water is cleared, an admin reverts the zone to `safe` from the admin view's **Zones** tab.
+
+---
+
+## 3. Quick start (no Firebase project required)
+
+```bash
+npm install
+npm run dev
+```
+
+Open the URL Vite prints. **If no Firebase keys are present the app runs in demo mode**: the same UI, backed by an in-memory store that mirrors to `localStorage`. Nothing leaves the browser, and a banner says so. That is enough to click through the entire loop in a demo.
+
+To use the admin view locally, create a `.env`:
+
+```bash
+cp .env.example .env
+```
+
+and set at least:
+
+```
+VITE_ADMIN_PASSCODE=whatever-you-like
+```
+
+Then open `/admin` and type that passcode.
+
+> **Demo-mode tip:** demo data lives in `localStorage` under `red-tide-ppc:demo:v1`. Clear site data (or run `localStorage.clear()` in the console) to start over with all zones `safe`.
+
+---
+
+## 4. Connecting a real Firebase backend
+
+The app uses **Firestore for data and Cloudinary for photo uploads — no Firebase Auth**.
+
+### 4.1 Create the project
+
+1. [Firebase console](https://console.firebase.google.com) → **Add project**.
+2. **Build → Firestore Database → Create database** (start in production mode; the rules below replace the defaults).
+3. **Project settings → General → Your apps → Web app (`</>`)** → register an app and copy the config object.
+
+### 4.2 Fill in `.env`
+
+```
+VITE_FIREBASE_API_KEY=AIza...
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project
+VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000
+VITE_FIREBASE_APP_ID=1:000000000000:web:0000000000000000
+VITE_CLOUDINARY_CLOUD_NAME=your-cloud-name
+VITE_CLOUDINARY_UPLOAD_PRESET=your-unsigned-upload-preset
+VITE_ADMIN_PASSCODE=change-me
+```
+
+`.env` is gitignored. Everything prefixed `VITE_` is compiled into the public JavaScript bundle — these are identifiers, **not secrets**. Access control belongs in the security rules.
+
+Restart `npm run dev` after editing `.env`; Vite only reads env files at startup.
+
+### 4.3 Configure Cloudinary photo uploads
+
+1. Create a free account at [Cloudinary](https://cloudinary.com/users/register_free).
+2. In the Cloudinary console, copy your **Cloud Name** from **Settings → API Keys** into `VITE_CLOUDINARY_CLOUD_NAME`.
+3. Go to **Settings → Upload → Upload presets**, create a preset with **Signing Mode: Unsigned**, and put its preset name in `VITE_CLOUDINARY_UPLOAD_PRESET`.
+
+The upload preset name and cloud name are public browser configuration, not secrets. Restrict the unsigned preset in Cloudinary (for example, allowed formats and file size) before production use.
+
+### 4.4 Deploy the Firestore security rules
+
+The repository ships `firestore.rules` (wired up by `firebase.json`):
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase use --add          # pick your project
+firebase deploy --only firestore:rules
+```
+
+Or paste the contents into the Firebase console under **Firestore → Rules**.
+
+> ### ⚠️ These rules are insecure by design
+>
+> There is no authentication in this MVP, so the rules cannot distinguish a fisherman from an attacker:
+>
+> - `reports` must be **world-writable**, or nobody can submit anonymously.
+> - `zones` must be **world-updatable**, or the admin's Approve button cannot flip a zone to `advisory`.
+>
+> What they still enforce: fixed document shapes, **every new report must start as `pending`** (nobody can self-confirm), zone updates restricted to `status`/`lastUpdated`, and no deletes.
+>
+> Before any real deployment, add Firebase Auth with an admin custom claim and lock writes behind it. The rule files show the intended shape in a comment.
+
+### 4.5 Seed the zones
+
+Zones are **pre-seeded, never user-created**:
+
+```bash
+npm run seed:dry-run   # show what would be written, write nothing
+npm run seed           # create any missing zones
+npm run seed -- --force  # overwrite existing zones (resets status to "safe")
+```
+
+The seed script reads the same `.env` as the app and writes the six zones defined in `src/data/zones.ts` into the `zones` collection with `lastUpdated = serverTimestamp()`.
+
+Polygons are stored as arrays of `{lat, lng}` objects: Firestore rejects nested arrays, so the `[lat, lng]` tuples the app uses are converted on the way in (`toFirestorePolygon`) and back to tuples on the way out (`normalizePolygon`). `seed:dry-run` also validates every payload shape before touching the network.
+
+### 4.6 Verify
+
+Reload the app. The amber **demo mode** banner should be gone, and a report submitted in one browser should appear in the admin queue of another.
+
+---
+
+## 5. Admin review workflow
+
+| Action | Report status | Zone status |
+| --- | --- | --- |
+| **Approve** | `pending` → `confirmed` | → `advisory`, `lastUpdated = now` |
+| **Reject** | `pending` → `rejected` | **unchanged** |
+| **Zones tab → Safe / Unconfirmed / Advisory** | unchanged | set directly, `lastUpdated = now` |
+
+Submitting a report never changes a zone by itself — otherwise a rejected report would leave a zone stuck in a changed state. The number of pending reports per zone is shown on the map popup and in the zone list instead.
+
+---
+
+## 6. Scripts
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Vite dev server (binds `0.0.0.0`, so phones on the same network can open it) |
+| `npm run build` | Type-check (`tsc -b`) then production build into `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run typecheck` | Type-check only |
+| `npm test` | Run the Vitest suite once |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run seed` | Seed zones into Firestore |
+| `npm run seed:dry-run` | Seed preview, no writes |
+
+---
+
+## 7. Project structure
+
+Deliberately small files in separate modules, so two developers can work in parallel without colliding:
+
+```
+scripts/
+  seed.ts                 # writes the zones into Firestore
+src/
+  types.ts                # Zone / Report domain types (no DOM, no Firebase)
+  store.ts                # ALL datastore calls + app state (Zustand)
+  data/
+    zones.ts              # the six pre-seeded zones + polygon helper
+  lib/
+    backend.ts            # Backend contract + which implementation to use
+    backend.firebase.ts   # Firestore + Cloudinary upload plumbing
+    backend.demo.ts       # in-memory / localStorage implementation
+    firestoreMapping.ts   # Firestore doc -> domain type (pure, unit-tested)
+    firebase.ts           # Firebase bootstrap + env parsing
+    status.ts             # status -> colour / label / guidance (single source)
+    format.ts             # date + relative time + byte formatting (PHT)
+    image.ts              # photo size/type checks, downscale for demo mode
+  components/
+    Map.tsx               # react-leaflet map, polygons, popups
+    ZonePopup.tsx         # popup content + "Report something here"
+    ReportForm.tsx        # report modal / bottom sheet
+    ReportCard.tsx        # one report in the admin queue
+    AdminGate.tsx         # passcode screen
+    ZoneSheet.tsx         # three-anchor bottom sheet (peek/mid/full): advisories + zone list,
+                           # left status-accent cards, spring-driven with velocity-aware snap
+    StatusPip.tsx         # the status dot (pops on status change)
+    Ambient.tsx            # advisory-signal gauge + map scanline (schematic)
+    Header.tsx  Legend.tsx  StatusBadge.tsx  Notice.tsx  DemoBanner.tsx
+    DecryptedText.tsx     # landing hero: glyphs resolve left to right (reactbits pattern)
+    Waves.tsx             # landing background: three sine composites on a canvas
+    CountUp.tsx           # landing figures: counts up on first view, re-tweens on live updates
+    BlurText.tsx          # landing copy: words blur into focus on their own scroll trigger
+    HeroBackdrop.tsx      # landing hero backdrop: full-bleed WebGL panel, owns the
+                           # reduced-motion/off-screen/lazy-load policy (see docs §15, §20)
+    ferrofluid/            # the `ogl` shader itself -- reach it only via HeroBackdrop
+    Map.test.tsx           # regression: the zone-path classes in a production render
+  motion/
+    RouteTransition.tsx   # landing <-> map <-> admin route transition (fade + rise; see docs §19)
+    sheetAnchors.ts       # peek/mid/full maths, snap velocity projection, underlay +
+                           # header-chrome opacity (pure, tested)
+    readouts.ts           # data-derived sheet copy + gauge wave (pure, tested)
+    useZoneSheet.ts        # sheet position/anchors + underlay + header motion values
+  styles/
+    statusTheme.ts        # status -> dark-theme colours, classes, map paint
+  pages/
+    Landing.tsx            # / -- pre-map landing (DecryptedText hero, Waves, CountUp)
+    MapPage.tsx             # /map public view (lazy-loaded)
+    Admin.tsx               # /admin review dashboard
+```
 
 **Split suggestion:** one developer owns `Map.tsx` / `MapPage.tsx` / `Legend.tsx`; the other owns `ReportForm.tsx` / `Admin.tsx` / `AdminGate.tsx` / `ReportCard.tsx`. `store.ts`, `types.ts` and `status.ts` are the shared contract — change them together.
 
@@ -41,13 +297,13 @@ Notes:
 - Env vars are baked in **at build time**. Changing them requires a redeploy.
 - Make sure the deployed Firestore rules are the ones in this repo, and restrict the unsigned Cloudinary preset for production.
 - Map tiles come from OpenStreetMap and need the visitor to be online.
-- If you're pausing/unpausing auto-publish to conserve build minutes or bandwidth on a free tier, remember: a paused site serves nothing to visitors, and new commits won't auto-deploy until you resume it. Always confirm the deploy log shows every stage (Initializing → Building → Deploying → Cleanup → Post-processing) as **Complete** before pausing again.
+- If you pause/unpause auto-publishing to conserve build minutes or bandwidth on a free tier: a **paused site serves nothing to visitors**, and new commits won't auto-deploy until you resume it. Before pausing again after a redeploy, confirm the deploy log shows every stage (Initializing → Building → Deploying → Cleanup → Post-processing) as **Complete** — otherwise you can end up pausing mid-build on a stale or broken version without noticing.
 
 ---
 
 ## 10. Zone boundaries
 
-The polygons in `src/data/zones.ts` are **hand-drawn approximations, traced against the real coastline** — not survey boundaries and not official BFAR fisheries areas. Each zone's shape follows the shoreline stretch its name and description describe (mangrove edge, bay shallows, island cluster, port frontage, etc.), so the polygon actually overlaps the water people fish, glean, or gather shellfish in, rather than floating out in open sea disconnected from land.
+The polygons in `src/data/zones.ts` are **hand-drawn approximations, traced against the real coastline** — not survey boundaries and not official BFAR fisheries areas. Each zone's shape follows the shoreline stretch its name and description describe (mangrove edge, bay shallows, island cluster, port frontage, and so on), so the polygon actually overlaps the water people fish, glean, or gather shellfish in, rather than floating out in open sea disconnected from land.
 
 Reference points used to anchor the shapes: the Bancao-Bancao lighthouse, the Santa Lourdes wharf, Cowrie/Cañon/Luli and the other Honda Bay islands, Sabang village, and Saint Paul Rock.
 
@@ -56,7 +312,7 @@ Two caveats worth knowing:
 - The outlines are simplified to a handful of vertices each, so a zone edge can cut across a mangrove islet or a small headland. They mark an area, not a precise boundary line.
 - `binuatan` is a legacy id: there is no coastal place called Binuatan (the only Binuatan in the Philippines is a weaving centre in Barangay Santa Monica, inside the city). That polygon covers the real northeast-coast water off the Marayugon and Babuyan barangays.
 
-> **Provenance note:** an earlier revision of these polygons was placed by offset from the coastline (vertices deliberately kept clear of the mapped shore) rather than traced along it, which put the shapes out in open water instead of over the areas the app is meant to warn people about. If you're touching this file, verify visually that every zone's near-land edge actually sits against the shoreline — zoom the map into each zone individually and check for a gap of open water between the polygon and the coast.
+> **Provenance note:** an earlier revision of these polygons was placed by offset from the coastline (vertices deliberately kept clear of the mapped shore) rather than traced along it, which put the shapes out in open water instead of over the areas the app is meant to warn people about. If you're touching this file, verify visually that every zone's near-land edge actually sits against the shoreline — zoom the map into each zone individually and check for a gap of open water between the polygon and the coast before committing.
 
 Before this is used for real public-health decisions, replace them with the actual boundaries from BFAR or the Puerto Princesa City LGU.
 
@@ -92,7 +348,7 @@ Before this is used for real public-health decisions, replace them with the actu
 npm test
 ```
 
-142+ tests across the suite (grows with each pass — see `docs/` for the browser-verification write-ups behind recent UI changes):
+A growing suite across the following areas (see `docs/` for the browser-verification write-ups behind recent UI passes — bottom sheet redesign, header fade timing, hero full-bleed, coastal polygon accuracy):
 
 - **`src/App.test.tsx`** (jsdom) — the whole loop rendered for real: landing → map → tap a zone → report → `/admin` → wrong passcode rejected → correct passcode → Approve → zone turns advisory → public map shows the advisory. Plus the landing page's decrypted hero and live readout, a photo attachment run end to end, and a check that a too-short report submits nothing.
 - **`src/pages/mapPass.test.tsx`** (jsdom) — the six-item visual pass, DOM side: peek row content + hidden body, anchor cycling, the `zone-path` fill ramp, attribution, zoom-control placement, and the full report → approve loop.
@@ -119,7 +375,7 @@ node scripts/final-pass.mjs   # in another — 6/6 checks, exit 0
 
 Tiles and webfonts are allowed to fail (offline sandboxes): every assertion targets the app's own UI. Where a sandbox has no browser at all, the DOM/behaviour half of the same six items runs in CI via `src/pages/mapPass.test.tsx`.
 
-Additional one-off verification scripts (bottom sheet snap points, header fade timing, coastal polygon accuracy, hero full-bleed) live in `scripts/` alongside their write-ups in `docs/` — check there before re-deriving something that's already been measured.
+Additional one-off verification scripts (bottom sheet snap points, header fade timing, coastal polygon accuracy, hero full-bleed) live in `scripts/` alongside their write-ups in `docs/` — check there before re-deriving something that has already been measured.
 
 ---
 
