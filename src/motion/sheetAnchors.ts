@@ -342,12 +342,29 @@ export function chromeOpacity(progress: number, fadeUntil = 0.35): number {
  * Opacity for the header — fades later than chrome, so it stays fully visible
  * at mid/peek and only disappears at full. This fixes stale-chrome in both
  * directions: at full it's hidden (with pointer-events none), but when dragged
- * back down from full to mid/peek it fades back in promptly (by 70% progress)
- * rather than staying invisible or fading late.
+ * back down from full to mid/peek it fades back in promptly rather than staying
+ * invisible or fading late.
  *
- * Fully visible until 70% progress (which is past mid at 0.48), then fades to
- * 0 by 100% (full). So mid/peek = 1, full = 0.
+ * Fully visible until 60% progress (which is past mid at 0.48), then fades to
+ * 0 by 100% (full) with smoothstep easing so a fast flick peek→full (skipping
+ * mid) doesn't look like a glitch — the fade is spread over 40% of travel
+ * (0.6→1.0) with S-curve easing, not an abrupt linear cut in the last 30%.
+ *
+ * - 0.6 threshold keeps mid (0.48) fully visible with margin, while giving
+ *   more distance for fade than 0.7→1.0 (40% vs 30% of sheet travel).
+ * - smoothstep t*t*(3-2*t) makes fade start gently, accelerate mid, then ease
+ *   out near full — less jarring during fast spring (stiffness 420) where
+ *   peek→full settles in ~300ms; fade now lasts ~120ms of that instead of ~90ms.
+ * - For reduced-motion, progress jumps instantly (offsetY.jump), so opacity
+ *   swaps instantly 1→0 at same 0.6 threshold with no animated fade, consistent
+ *   with rest of sheet (spring disabled, jump).
+ *
+ * So mid/peek = 1, full = 0, prompt fade-in by 60% when dragging down.
  */
 export function headerOpacity(progress: number): number {
-  return 1 - clamp01((clamp01(progress) - 0.7) / 0.3)
+  const p = clamp01(progress)
+  const t = clamp01((p - 0.6) / 0.4)
+  // smoothstep for less jarring dismissal
+  const smooth = t * t * (3 - 2 * t)
+  return 1 - smooth
 }

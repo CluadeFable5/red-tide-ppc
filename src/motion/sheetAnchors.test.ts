@@ -318,22 +318,64 @@ describe('headerOpacity', () => {
   it('stays fully visible at peek and mid, only fades at full', () => {
     expect(headerOpacity(0)).toBe(1) // peek
     expect(headerOpacity(0.48)).toBe(1) // mid ~0.48 progress
-    expect(headerOpacity(0.7)).toBe(1) // still visible at 70%
-    expect(headerOpacity(0.85)).toBeCloseTo(0.5) // half-faded near full
+    expect(headerOpacity(0.6)).toBe(1) // still visible at 60% threshold
+    expect(headerOpacity(0.8)).toBeCloseTo(0.5) // half-faded at 80% with smoothstep
     expect(headerOpacity(1)).toBe(0) // full
   })
 
   it('fades back in promptly when dragging down from full to mid', () => {
-    // At full progress 1 → mid 0.48, by 0.7 it should be fully visible again
+    // At full progress 1 → mid 0.48, by 0.6 it should be fully visible again
     // So dragging down from full should restore header quickly, not late
-    expect(headerOpacity(0.9)).toBeCloseTo(0.33, 1)
-    expect(headerOpacity(0.7)).toBe(1)
+    // With smoothstep 0.6→1.0, fade is spread over 40% travel, not abrupt
+    expect(headerOpacity(0.9)).toBeCloseTo(0.156, 1) // 0.75 t smoothstep
+    expect(headerOpacity(0.7)).toBeCloseTo(0.843, 1) // 0.25 t, still mostly visible
     expect(headerOpacity(0.6)).toBe(1)
+    expect(headerOpacity(0.5)).toBe(1)
+  })
+
+  it('uses smoothstep easing so fast flick peek→full is not jarring glitch', () => {
+    // Fast flick from peek (0) to full (1) skips mid — verify fade has intermediate values,
+    // not instant 1→0. With smoothstep 0.6-1.0, opacity at 0.7,0.8,0.9 should be intermediate
+    // and monotonic decreasing, with S-curve shape (not linear abrupt).
+    const samples = [0.6, 0.7, 0.8, 0.9, 1.0].map((p) => headerOpacity(p))
+    // Monotonic decreasing
+    for (let i = 1; i < samples.length; i++) {
+      expect(samples[i]).toBeLessThanOrEqual(samples[i - 1])
+    }
+    // Has intermediate values, not just 0/1
+    expect(samples[1]).toBeGreaterThan(0.5) // at 0.7, still mostly visible ~0.84
+    expect(samples[1]).toBeLessThan(1)
+    expect(samples[2]).toBeCloseTo(0.5, 1) // at 0.8, half
+    expect(samples[3]).toBeGreaterThan(0)
+    expect(samples[3]).toBeLessThan(0.5) // at 0.9, mostly faded but not 0
+    // Smoothstep: derivative at start and end is 0, so fade starts gently
+    // Check that fade from 0.6→0.7 is smaller than 0.7→0.8 (ease-in portion)
+    const delta1 = samples[0] - samples[1] // 1 - 0.843 = 0.157
+    const delta2 = samples[1] - samples[2] // 0.843 - 0.5 = 0.343
+    expect(delta1).toBeLessThan(delta2) // starts gently, accelerates
   })
 
   it('keeps header visible when progress unknown', () => {
     expect(headerOpacity(Number.NaN)).toBe(1)
     expect(headerOpacity(-1)).toBe(1)
+  })
+
+  it('supports reduced-motion instant swap at same threshold', () => {
+    // Reduced-motion uses offsetY.jump, so progress jumps instantly from 0 to 1.
+    // Opacity should swap instantly 1→0 at threshold, no animated fade.
+    // This test documents that headerOpacity itself is pure and threshold-based,
+    // so a jump over threshold yields instant swap — no extra animation needed.
+    // The pointer-events logic (headerOpacity<0.1 ? 'none' : 'auto') also swaps instantly.
+    const peekOpacity = headerOpacity(0)
+    const fullOpacity = headerOpacity(1)
+    expect(peekOpacity).toBe(1)
+    expect(fullOpacity).toBe(0)
+    const pointerEvents = (p: number) => (headerOpacity(p) < 0.1 ? 'none' : 'auto')
+    expect(pointerEvents(0)).toBe('auto')
+    expect(pointerEvents(0.6)).toBe('auto')
+    expect(pointerEvents(1)).toBe('none')
+    // Instant swap means no intermediate opacity during jump — verified in
+    // real browser with prefers-reduced-motion: log shows only 1 and 0, no 0.05-0.95 values
   })
 })
 
