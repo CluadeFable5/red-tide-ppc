@@ -33,8 +33,10 @@ import type { ZoneStatus } from '../types'
  * ---------------------
  * Two layers, each scoped so they never overlap:
  *
- *  - `HeroBackdrop` — the Ferrofluid WebGL panel, the hero only. It owns all
- *    the reduced-motion / off-screen / lazy-load policy; see that file.
+ *  - `HeroBackdrop` — the Ferrofluid WebGL panel, the hero only. It is sized
+ *    by the full-bleed hero band (THE HERO BAND below), not by the content
+ *    column, and it owns all the reduced-motion / off-screen / lazy-load
+ *    policy; see that file.
  *  - `Waves` — the existing 2D canvas, now masked out behind the hero so only
  *    one animated layer ever repaints a given band of the page.
  *
@@ -129,116 +131,142 @@ export function Landing() {
           }
         />
 
-        <main className={`mx-auto flex-1 ${LANDING_CONTAINER}`}>
-          {/* Stack on phones/tablets; use the right half for live information
-              on laptops instead of stretching the hero paragraph across it. */}
-          <div className="lg:grid lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-12 lg:pt-20 xl:gap-20 2xl:gap-24">
-            <section aria-label="Introduction" className="relative min-w-0 pt-20 sm:pt-24 lg:pt-0">
-              {/* Keep one lazy, reduced-motion-safe animation scoped to the hero.
-                  No map bundle or second canvas is needed for the wider layout. */}
-              <HeroBackdrop />
+        {/*
+          THE HERO BAND — full-bleed, and deliberately outside <main>.
 
-              <div className="relative">
-                {/* Short label — letters read better than words at this size,
-                    and it is the first thing to resolve. */}
-                <BlurText
-                  as="p"
-                  text="Community early warning"
-                  animateBy="letters"
-                  direction="top"
-                  delay={14}
-                  stepDuration={0.22}
-                  className="text-xs font-medium tracking-[0.08em] text-accent"
-                />
+          `HeroBackdrop` used to be mounted inside the Introduction section,
+          which made its `absolute inset-0` the size of that section: the left
+          grid column, inside the centered max-w-* container. The texture
+          stopped in a rectangle around the headline block while the rest of
+          the band — the live-overview column, the page margins — stayed flat
+          black. The backdrop is therefore sized by THIS wrapper, a full-bleed
+          sibling of <main> (a child cannot outgrow <main>'s max-width without
+          negative-margin hacks), and the content column below layers on top
+          of it. Nothing below the hero moves: the band starts exactly where
+          <main> used to start, so every rect the spacing/responsive passes
+          measured is unchanged — only the backdrop's bounds grew.
+        */}
+        <div className="relative">
+          {/* Keep one lazy, reduced-motion-safe animation scoped to the hero.
+              No map bundle or second canvas is needed for the wider layout.
+              Being the band's first child is what sizes it: the hero's full
+              width and height, both columns included — not the content
+              column, which is what clipped it before. */}
+          <HeroBackdrop />
 
-                {/* The headline still decrypts once on load (skipped on small
-                    viewports and under reduced motion — see DecryptedText). The
-                    label lives on the heading itself: the scrambling text is
-                    aria-hidden, so a screen reader never reads the glyphs. */}
-                <h1
-                  aria-label="Red Tide"
-                  className="font-display mt-4 text-7xl leading-[0.9] text-paper sm:mt-3 sm:text-8xl xl:text-9xl"
-                >
-                  <DecryptedText text="RED TIDE" />
-                </h1>
+          {/* `relative` is the layering contract: a positioned element paints
+              after the absolutely-positioned backdrop above it, so the whole
+              content column — headline, CTAs, live overview — sits on top of
+              the texture rather than under it. */}
+          <div className={`relative mx-auto ${LANDING_CONTAINER}`}>
+            {/* Stack on phones/tablets; use the right half for live information
+                on laptops instead of stretching the hero paragraph across it. */}
+            <div className="lg:grid lg:grid-cols-[1.1fr_1fr] lg:items-center lg:gap-12 lg:pt-20 xl:gap-20 2xl:gap-24">
+              <section aria-label="Introduction" className="min-w-0 pt-20 sm:pt-24 lg:pt-0">
+                <div>
+                  {/* Short label — letters read better than words at this size,
+                      and it is the first thing to resolve. */}
+                  <BlurText
+                    as="p"
+                    text="Community early warning"
+                    animateBy="letters"
+                    direction="top"
+                    delay={14}
+                    stepDuration={0.22}
+                    className="text-xs font-medium tracking-[0.08em] text-accent"
+                  />
 
-                {/* The subheading blurs in by words, after the scramble has had
-                    time to resolve above it. */}
-                <BlurText
-                  as="p"
-                  text="Watch the water, report what you see, and warn Puerto Princesa before bad shellfish reaches the table."
-                  animateBy="words"
-                  direction="top"
-                  delay={55}
-                  className="mt-5 block max-w-md text-base leading-relaxed text-muted sm:mt-4 sm:text-lg xl:max-w-lg xl:text-xl"
-                />
-
-                {/* NOT ANIMATED. The route to the map is the whole point of this
-                    page; it must be there and clickable on the first frame. */}
-                <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4 sm:mt-8 sm:gap-y-3">
-                  <Link
-                    to="/map"
-                    {...MAP_CTA_PREFETCH}
-                    className="rounded-lg bg-accent px-6 py-3 text-base font-semibold text-ink transition hover:brightness-110 active:scale-95"
+                  {/* The headline still decrypts once on load (skipped on small
+                      viewports and under reduced motion — see DecryptedText). The
+                      label lives on the heading itself: the scrambling text is
+                      aria-hidden, so a screen reader never reads the glyphs. */}
+                  <h1
+                    aria-label="Red Tide"
+                    className="font-display mt-4 text-7xl leading-[0.9] text-paper sm:mt-3 sm:text-8xl xl:text-9xl"
                   >
-                    Open the map
-                  </Link>
-                  <Link
-                    to="/map"
-                    {...MAP_CTA_PREFETCH}
-                    className="text-sm font-medium text-paper/80 underline-offset-4 transition-colors hover:text-accent hover:underline"
-                  >
-                    Report a sighting
-                  </Link>
-                </div>
-              </div>
-            </section>
+                    <DecryptedText text="RED TIDE" />
+                  </h1>
 
-            <div className="mt-14 min-w-0 sm:mt-16 lg:mt-0 lg:rounded-xl lg:border lg:border-line lg:bg-ink-2/60 lg:p-6 xl:p-8">
-              <h2 className="mb-5 hidden text-base font-semibold text-paper lg:block">Coastal overview</h2>
-              {/* -------------------------------------------------- live status */}
-              <section aria-label="Live status">
-                {zonesReady ? (
-                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-line bg-ink-2/60 px-3.5 py-2.5 text-[13px] leading-relaxed text-muted">
-                    <StatusPip
-                      hex={dominantTheme.hex}
-                      pulses={dominantTheme.pulses}
-                      trigger={dominant}
-                    />
-                    <span className="font-medium text-paper/90">
-                      {zones.length} zones watched
-                    </span>
-                    <span className="text-faint">
-                      · {counts.advisory} advisory · {counts.unconfirmed} unconfirmed
-                    </span>
-                    <span className="ml-auto text-paper/80">
-                      {pendingTotal} pending report{pendingTotal === 1 ? '' : 's'}
-                    </span>
+                  {/* The subheading blurs in by words, after the scramble has had
+                      time to resolve above it. */}
+                  <BlurText
+                    as="p"
+                    text="Watch the water, report what you see, and warn Puerto Princesa before bad shellfish reaches the table."
+                    animateBy="words"
+                    direction="top"
+                    delay={55}
+                    className="mt-5 block max-w-md text-base leading-relaxed text-muted sm:mt-4 sm:text-lg xl:max-w-lg xl:text-xl"
+                  />
+
+                  {/* NOT ANIMATED. The route to the map is the whole point of this
+                      page; it must be there and clickable on the first frame. */}
+                  <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4 sm:mt-8 sm:gap-y-3">
+                    <Link
+                      to="/map"
+                      {...MAP_CTA_PREFETCH}
+                      className="rounded-lg bg-accent px-6 py-3 text-base font-semibold text-ink transition hover:brightness-110 active:scale-95"
+                    >
+                      Open the map
+                    </Link>
+                    <Link
+                      to="/map"
+                      {...MAP_CTA_PREFETCH}
+                      className="text-sm font-medium text-paper/80 underline-offset-4 transition-colors hover:text-accent hover:underline"
+                    >
+                      Report a sighting
+                    </Link>
                   </div>
-                ) : (
-                  <p
-                    role="status"
-                    className="animate-pulse rounded-lg border border-line bg-ink-2/60 px-3.5 py-2.5 text-[13px] text-faint"
-                  >
-                    Reading the water…
-                  </p>
-                )}
+                </div>
               </section>
 
-              {/* ------------------------------------------------------ figures */}
-              <section aria-label="Figures" className="mt-3.5 grid grid-cols-3 gap-2.5 sm:mt-4 sm:gap-3">
-                <Figure label="Zones watched" value={zones.length} ready={zonesReady} />
-                <Figure label="Pending reports" value={pendingTotal} ready={reportsReady} />
-                <Figure
-                  label="Under advisory"
-                  value={counts.advisory}
-                  ready={zonesReady}
-                  valueClass={counts.advisory > 0 ? 'text-advisory' : undefined}
-                />
-              </section>
+              <div className="mt-14 min-w-0 sm:mt-16 lg:mt-0 lg:rounded-xl lg:border lg:border-line lg:bg-ink-2/60 lg:p-6 xl:p-8">
+                <h2 className="mb-5 hidden text-base font-semibold text-paper lg:block">Coastal overview</h2>
+                {/* -------------------------------------------------- live status */}
+                <section aria-label="Live status">
+                  {zonesReady ? (
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-line bg-ink-2/60 px-3.5 py-2.5 text-[13px] leading-relaxed text-muted">
+                      <StatusPip
+                        hex={dominantTheme.hex}
+                        pulses={dominantTheme.pulses}
+                        trigger={dominant}
+                      />
+                      <span className="font-medium text-paper/90">
+                        {zones.length} zones watched
+                      </span>
+                      <span className="text-faint">
+                        · {counts.advisory} advisory · {counts.unconfirmed} unconfirmed
+                      </span>
+                      <span className="ml-auto text-paper/80">
+                        {pendingTotal} pending report{pendingTotal === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                  ) : (
+                    <p
+                      role="status"
+                      className="animate-pulse rounded-lg border border-line bg-ink-2/60 px-3.5 py-2.5 text-[13px] text-faint"
+                    >
+                      Reading the water…
+                    </p>
+                  )}
+                </section>
+
+                {/* ------------------------------------------------------ figures */}
+                <section aria-label="Figures" className="mt-3.5 grid grid-cols-3 gap-2.5 sm:mt-4 sm:gap-3">
+                  <Figure label="Zones watched" value={zones.length} ready={zonesReady} />
+                  <Figure label="Pending reports" value={pendingTotal} ready={reportsReady} />
+                  <Figure
+                    label="Under advisory"
+                    value={counts.advisory}
+                    ready={zonesReady}
+                    valueClass={counts.advisory > 0 ? 'text-advisory' : undefined}
+                  />
+                </section>
+              </div>
             </div>
           </div>
+        </div>
 
+        <main className={`mx-auto flex-1 ${LANDING_CONTAINER}`}>
           <div className="mt-14 grid gap-14 sm:mt-16 sm:gap-16 md:grid-cols-2 md:gap-10 lg:mt-20 xl:gap-20 2xl:gap-24">
             {/* ------------------------------------------------ how it works */}
             {/*

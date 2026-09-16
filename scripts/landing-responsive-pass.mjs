@@ -40,7 +40,9 @@ try {
       await page.locator('section[aria-label="Figures"]').waitFor()
       await page.evaluate(() => document.fonts.ready)
       // Resolve every scroll-triggered reveal before taking the full-page shot.
-      for (const section of await page.locator('main section').all()) {
+      // (The hero band left <main> when it went full-bleed — §20 — so this
+      // walks every labelled section, hero included, not just main's.)
+      for (const section of await page.locator('section[aria-label]').all()) {
         await section.evaluate((element) => element.scrollIntoView({ block: 'center' }))
         await page.waitForTimeout(reducedMotion === 'reduce' ? 50 : 1200)
       }
@@ -74,7 +76,11 @@ try {
           how: rect(section('How it works')), primer: rect(section('What is red tide')),
           banner: rect(footer.previousElementSibling), footer: rect(footer),
           footerDirection: getComputedStyle(footer).flexDirection,
-          ctas: [...document.querySelectorAll('main a[href="/map"]')].map(rect),
+          // The hero band is a sibling of <main> since it went full-bleed
+          // (§20), so scope by "not in the header" rather than by <main>.
+          ctas: [...document.querySelectorAll('a[href="/map"]')]
+            .filter((a) => !a.closest('header'))
+            .map(rect),
           overflow, scrollWidth: document.documentElement.scrollWidth,
           loadedFonts: [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family),
         }
