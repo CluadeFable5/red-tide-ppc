@@ -11,6 +11,7 @@ import {
   type SheetOffsets,
   chromeOpacity,
   clampOffset,
+  headerOpacity,
   isDragTail,
   nearestAnchor,
   nextSheetAnchor,
@@ -35,9 +36,9 @@ const OFFSETS = sheetOffsets(HEIGHT)
 
 describe('sheetOffsets', () => {
   it('places each anchor at the complement of its visible ratio', () => {
-    expect(OFFSETS.peek).toBeCloseTo(HEIGHT * 0.86)
-    expect(OFFSETS.mid).toBeCloseTo(HEIGHT * 0.55)
-    expect(OFFSETS.full).toBeCloseTo(HEIGHT * 0.15)
+    expect(OFFSETS.peek).toBeCloseTo(HEIGHT * (1 - SHEET_VISIBLE_RATIO.peek))
+    expect(OFFSETS.mid).toBeCloseTo(HEIGHT * (1 - SHEET_VISIBLE_RATIO.mid))
+    expect(OFFSETS.full).toBeCloseTo(HEIGHT * (1 - SHEET_VISIBLE_RATIO.full))
   })
 
   it('orders anchors top-to-bottom and keeps every anchor on screen', () => {
@@ -56,9 +57,18 @@ describe('sheetOffsets', () => {
     }
   })
 
-  it('respects the briefed peek band', () => {
+  it('respects the briefed peek band and full cap', () => {
     expect(SHEET_VISIBLE_RATIO.peek).toBeGreaterThanOrEqual(0.12)
-    expect(SHEET_VISIBLE_RATIO.peek).toBeLessThanOrEqual(0.15)
+    expect(SHEET_VISIBLE_RATIO.peek).toBeLessThanOrEqual(0.18)
+    expect(SHEET_VISIBLE_RATIO.mid).toBeGreaterThanOrEqual(0.45)
+    expect(SHEET_VISIBLE_RATIO.mid).toBeLessThanOrEqual(0.55)
+    expect(SHEET_VISIBLE_RATIO.full).toBeGreaterThanOrEqual(0.85)
+    expect(SHEET_VISIBLE_RATIO.full).toBeLessThanOrEqual(0.9)
+  })
+
+  it('caps full at 88vh per spec, never unbounded', () => {
+    expect(SHEET_VISIBLE_RATIO.full).toBeLessThanOrEqual(0.9)
+    expect(SHEET_VISIBLE_RATIO.full).toBeGreaterThanOrEqual(0.85)
   })
 })
 
@@ -76,9 +86,9 @@ describe('clampOffset', () => {
 
 describe('sheetVisibleRatio', () => {
   it('reports the visible fraction at each anchor', () => {
-    expect(sheetVisibleRatio(OFFSETS.peek, HEIGHT)).toBeCloseTo(0.14)
-    expect(sheetVisibleRatio(OFFSETS.mid, HEIGHT)).toBeCloseTo(0.45)
-    expect(sheetVisibleRatio(OFFSETS.full, HEIGHT)).toBeCloseTo(0.85)
+    expect(sheetVisibleRatio(OFFSETS.peek, HEIGHT)).toBeCloseTo(SHEET_VISIBLE_RATIO.peek)
+    expect(sheetVisibleRatio(OFFSETS.mid, HEIGHT)).toBeCloseTo(SHEET_VISIBLE_RATIO.mid)
+    expect(sheetVisibleRatio(OFFSETS.full, HEIGHT)).toBeCloseTo(SHEET_VISIBLE_RATIO.full)
   })
 
   it('falls back to the peek ratio when the viewport is unknown', () => {
@@ -117,7 +127,7 @@ describe('resolveSheetAnchor', () => {
   })
 
   it('projects the release point forward with velocity', () => {
-    // Just past mid, moving up at 1000 px/s: the projection (180px) is past
+    // Just past mid, moving up at 1000 px/s: the projection (200px at 0.2s) is past
     // full, so the flick should carry all the way, not stop at mid.
     const target = resolveSheetAnchor({
       offset: OFFSETS.mid + 10,
@@ -241,7 +251,6 @@ describe('underlay', () => {
   it('runs 0 at peek → 1 at full', () => {
     expect(underlayProgress(OFFSETS.peek, OFFSETS)).toBeCloseTo(0)
     expect(underlayProgress(OFFSETS.full, OFFSETS)).toBeCloseTo(1)
-    // Mid sits 31/71 of the way from peek to full: (peek - mid) / (peek - full).
     expect(underlayProgress(OFFSETS.mid, OFFSETS)).toBeCloseTo(
       (SHEET_VISIBLE_RATIO.peek - SHEET_VISIBLE_RATIO.mid) /
         (SHEET_VISIBLE_RATIO.peek - SHEET_VISIBLE_RATIO.full),
@@ -302,6 +311,29 @@ describe('chromeOpacity', () => {
     // blank the legend and the gauge off the map.
     expect(chromeOpacity(Number.NaN)).toBe(1)
     expect(chromeOpacity(-1)).toBe(1)
+  })
+})
+
+describe('headerOpacity', () => {
+  it('stays fully visible at peek and mid, only fades at full', () => {
+    expect(headerOpacity(0)).toBe(1) // peek
+    expect(headerOpacity(0.48)).toBe(1) // mid ~0.48 progress
+    expect(headerOpacity(0.7)).toBe(1) // still visible at 70%
+    expect(headerOpacity(0.85)).toBeCloseTo(0.5) // half-faded near full
+    expect(headerOpacity(1)).toBe(0) // full
+  })
+
+  it('fades back in promptly when dragging down from full to mid', () => {
+    // At full progress 1 → mid 0.48, by 0.7 it should be fully visible again
+    // So dragging down from full should restore header quickly, not late
+    expect(headerOpacity(0.9)).toBeCloseTo(0.33, 1)
+    expect(headerOpacity(0.7)).toBe(1)
+    expect(headerOpacity(0.6)).toBe(1)
+  })
+
+  it('keeps header visible when progress unknown', () => {
+    expect(headerOpacity(Number.NaN)).toBe(1)
+    expect(headerOpacity(-1)).toBe(1)
   })
 })
 

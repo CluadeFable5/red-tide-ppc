@@ -10,6 +10,7 @@ import {
 import type { DragControls, MotionValue } from 'motion/react'
 import {
   chromeOpacity,
+  headerOpacity,
   nextSheetAnchor,
   resolveSheetAnchor,
   sheetOffsets,
@@ -22,12 +23,31 @@ import {
 import type { SheetAnchor, SheetOffsets } from './sheetAnchors'
 
 /**
- * Spring the sheet snaps with. Stiffness/damping are the values in the brief:
- * stiff enough that a flick lands without a visible "arrive and settle", damped
- * enough that it does not overshoot the anchor and come back — on a
- * viewport-tall panel an overshoot reads as a glitch, not as springiness.
+ * Spring the sheet snaps with.
+ *
+ * DESIGN DECISION — spring vs duration/easing
+ * -------------------------------------------
+ * Native map sheets (Google Maps, Apple Maps) use spring physics, not a timed
+ * easing curve. A spring is velocity-aware: a fast flick carries momentum into
+ * the settle, while a slow drag settles gently. Duration/easing would feel
+ * timed and would fight the user's gesture velocity.
+ *
+ * Values: stiffness 420, damping 34, mass 0.85
+ *   - Stiffer than the previous 300/30 so a flick lands without a visible
+ *     "arrive and settle" wobble. On a viewport-tall panel any overshoot reads
+ *     as a glitch, not as springiness.
+ *   - Damped enough that it doesn't overshoot the anchor and come back.
+ *   - Mass 0.85 makes it slightly snappier than default mass 1.
+ *
+ * For reduced-motion we jump instantly (no spring), so keyboard users and
+ * users with vestibular preferences still get functional sheet without motion.
  */
-const SHEET_SPRING = { type: 'spring', stiffness: 300, damping: 30 } as const
+const SHEET_SPRING = {
+  type: 'spring',
+  stiffness: 420,
+  damping: 34,
+  mass: 0.85,
+} as const
 
 /** A gesture that travelled less than this (px) was a tap, not a drag. */
 const DRAG_SLOP = 6
@@ -58,8 +78,12 @@ export interface ZoneSheetController {
   progress: MotionValue<number>
   /** 1 while chrome over the map should be visible, 0 once the sheet rises. */
   chromeOpacity: MotionValue<number>
+  /** Header fades later than chrome — visible at mid/peek, hidden at full. */
+  headerOpacity: MotionValue<number>
   /** Recede transform for the map beneath the sheet. */
   underlay: SheetUnderlayValues
+  /** For pointer-events handling on header */
+  headerPointerEvents: MotionValue<string>
   dragControls: DragControls
   /** Call from the drag surface's `onPointerDown`. */
   startDrag: (event: ReactPointerEvent<HTMLElement>) => void
@@ -95,6 +119,10 @@ export interface ZoneSheetController {
  *    value, and the loser is whichever one the user happens to be watching.
  *  - `offsetY.get()` at release already contains `dragElastic` overshoot, which
  *    is why `resolveSheetAnchor` clamps before it projects.
+ *  - Continuous drag tracking: offsetY is updated every pointermove via motion's
+ *    drag, so the sheet follows finger 1:1. On release velocity-aware snapping
+ *    via resolveSheetAnchor projects velocity forward (0.2s) and guarantees a
+ *    flick advances at least one detent.
  */
 export function useZoneSheet(initialAnchor: SheetAnchor = 'peek'): ZoneSheetController {
   const sheetRef = useRef<HTMLDivElement | null>(null)
@@ -189,6 +217,12 @@ export function useZoneSheet(initialAnchor: SheetAnchor = 'peek'): ZoneSheetCont
   // ---------------------------------------------------------------------
   const progress = useTransform(offsetY, (value) => underlayProgress(value, offsets))
 
+  const headerOpacityValue = useTransform(progress, (value) => headerOpacity(value))
+  const headerPointerEvents = useTransform(
+    progress,
+    (value): string => (headerOpacity(value) < 0.1 ? 'none' : 'auto'),
+  )
+
   return {
     sheetRef,
     anchor,
@@ -196,6 +230,8 @@ export function useZoneSheet(initialAnchor: SheetAnchor = 'peek'): ZoneSheetCont
     offsetY,
     progress,
     chromeOpacity: useTransform(progress, (value) => chromeOpacity(value)),
+    headerOpacity: headerOpacityValue,
+    headerPointerEvents,
     underlay: {
       scale: useTransform(progress, (value) => underlayScale(value)),
       radius: useTransform(progress, (value) => underlayRadius(value)),
