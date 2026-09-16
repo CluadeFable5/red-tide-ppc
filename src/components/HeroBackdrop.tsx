@@ -49,17 +49,28 @@ export const FERROFLUID_COLORS = ['#f0a500', '#eaeaea', '#080808']
 const IDLE_TIMEOUT_MS = 1200
 
 /**
- * The always-present, zero-cost backdrop: an amber wash off the top-left
- * falling into the page's near-black. This is what reduced-motion users,
- * WebGL-less devices and slow connections see, and it sits underneath the
- * canvas for everyone else.
+ * The always-present, zero-cost backdrop, in two layers:
+ *
+ *  1. The amber key light off the top-left, falling into the page's
+ *     near-black — the band's dominant light.
+ *  2. A faint, vertically-uniform amber sheen on both side edges. The band is
+ *     full-bleed, but the Ferrofluid is a sparse, drifting field of rims — at
+ *     any given instant its glow can be elsewhere, and without a permanent
+ *     base the outer slivers of a wide viewport read as flat black: exactly
+ *     what the full-bleed fix exists to remove. The sheen is what guarantees
+ *     the margins are never empty, for reduced-motion users and WebGL-less
+ *     devices just as much as for everyone else.
+ *
+ * This is what reduced-motion users, WebGL-less devices and slow connections
+ * see in full, and it sits underneath the canvas for everyone else — so the
+ * hero never flashes as a black hole, and a failed chunk load is invisible.
  */
 function StaticBackdrop() {
   return (
     <div
       aria-hidden="true"
       data-testid="hero-static-backdrop"
-      className="absolute inset-0 bg-[radial-gradient(120%_90%_at_15%_0%,rgba(240,165,0,0.16),rgba(240,165,0,0.05)_42%,rgba(8,8,8,0)_72%)]"
+      className="absolute inset-0 bg-[radial-gradient(120%_90%_at_15%_0%,rgba(240,165,0,0.16),rgba(240,165,0,0.05)_42%,rgba(8,8,8,0)_72%),linear-gradient(to_right,rgba(240,165,0,0.12),rgba(240,165,0,0.02)_50%,rgba(240,165,0,0.12))]"
     />
   )
 }
@@ -67,23 +78,26 @@ function StaticBackdrop() {
 /**
  * Feather mask applied to the whole backdrop.
  *
- * The hero panel is as wide as the content column, so without this its left
- * and right edges are a hard vertical cut against the page ground — measured
- * in a real browser at an 11.17/255 luminance step at x=304, clearly visible
- * as a rectangle of lighter background behind the headline. The horizontal
- * pass feathers both sides, the vertical pass fades the bottom into the page.
+ * The panel is full-bleed: it is sized by the hero band wrapper in
+ * `Landing.tsx`, so it spans the viewport edge to edge and there is no
+ * content-column boundary left to hide — a hard cut at the viewport sides is
+ * invisible, because nothing exists beyond it. (A horizontal feather pass
+ * used to live here, but only to disguise the content-column clip the
+ * backdrop was mounted in; full-bleed made it redundant, and keeping it would
+ * have left the outer margins of the band texture-less — the very bug the
+ * band wrapper exists to fix. See docs/design-references.md §20.)
+ *
+ * What remains is the vertical pass: the band dissolves into the page ground
+ * at its top (it starts directly under the header — without the fade that
+ * edge measured a 15–28/255 luminance step) and at its bottom, where the
+ * `Waves` canvas takes over, so the texture never ends on a visible line.
  */
-const FEATHER_MASK = [
-  'linear-gradient(to right, transparent 0, black 18%, black 82%, transparent 100%)',
-  'linear-gradient(to bottom, black 0, black 62%, transparent 100%)',
-].join(', ')
+const FEATHER_MASK = 'linear-gradient(to bottom, transparent 0, black 7%, black 62%, transparent 100%)'
 
-/** The two mask passes must intersect, so both edges feather. */
+/** One mask layer now — no composite needed. */
 const featherStyle: CSSProperties = {
   maskImage: FEATHER_MASK,
   WebkitMaskImage: FEATHER_MASK,
-  maskComposite: 'intersect',
-  WebkitMaskComposite: 'source-in',
 }
 
 export function HeroBackdrop({ className = '' }: { className?: string }) {
@@ -160,6 +174,7 @@ export function HeroBackdrop({ className = '' }: { className?: string }) {
     return (
       <div
         aria-hidden="true"
+        data-testid="hero-backdrop"
         className={`pointer-events-none absolute inset-0 ${className}`}
         style={featherStyle}
       >
@@ -213,8 +228,10 @@ export function HeroBackdrop({ className = '' }: { className?: string }) {
       ) : null}
 
       {/*
-        The bottom fade is part of FEATHER_MASK (the vertical pass), so the
-        panel dissolves into the page ground rather than ending on an edge.
+        The top and bottom fades are part of FEATHER_MASK (the vertical
+        pass), so the band dissolves into the page ground rather than ending
+        on an edge — under the header at the top, into the Waves canvas at
+        the bottom.
       */}
     </div>
   )

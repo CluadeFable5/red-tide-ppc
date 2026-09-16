@@ -1111,3 +1111,109 @@ Two pre-existing observations, measured rather than assumed:
 - `index.html` carries a `<link rel="modulepreload">` for the leaflet chunk, so it downloads on
   the landing page too. Identical in a build of the pre-change commit — pre-existing, unrelated
   to this pass, and worth revisiting only alongside the §14.3 lazy-boundary decision.
+
+---
+
+## 20. The hero backdrop goes full-bleed (2026-09-16)
+
+**Branch:** `arena/01a0a829-red-tide-ppc`
+**Scope:** the landing hero's backdrop bounds. No copy, spacing, routing or data change —
+verified below by measurement. `HeroBackdrop.tsx`, `Landing.tsx`,
+`scripts/landing-responsive-pass.mjs` (two selectors), new `scripts/hero-fullbleed-pass.mjs`.
+
+### 20.1 The bug
+
+The Ferrofluid "smoke" texture behind the RED TIDE headline stopped in a hard rectangle
+around the headline/text/CTA block; the rest of the hero band — the live-overview column,
+the page margins — was flat black. Measured on the pre-fix build
+(`scripts/hero-fullbleed-pass.mjs`, real Chromium):
+
+| Viewport | Backdrop rect | Hero band rect | Missing |
+|---|---|---|---|
+| 375px | x=20, w=335 | x=20, w=335 | 20px gutters; the overview column below |
+| 768px | x=32, w=704, h=394 | x=32, w=704, h=596 | gutters + 202px of stacked overview |
+| 1280px | x=40, w=587, h=337 | x=40, w=1200, h=417 | 32px gutters + the entire 533px overview column |
+| 1920px | x=208, w=738 | x=208, w=1504 | 208px margins each side + the 670px overview column |
+
+Pixel scan of the outer 40px at 1920: **mean 8.0, max 8.0, sd 0.00** — the page ground
+(#080808) and nothing else.
+
+**Root cause:** not a background-image on the wrong element and not an `overflow:hidden`
+clip — the third candidate from the brief. `<HeroBackdrop />` was mounted *inside* the
+`section[aria-label="Introduction"]`, and its `absolute inset-0` therefore resolved against
+that section: the left grid column, inside the centered `max-w-*` container. §16.3(c) had
+already met this exact rectangle and papered over it with the horizontal feather mask —
+the edges were softened, but the texture still only existed inside the content column.
+
+### 20.2 The fix
+
+- **`Landing.tsx`** — the hero grid (intro column + live overview) moves out of `<main>`
+  into its own full-bleed wrapper: `<div class="relative">` containing `<HeroBackdrop />`
+  and then the content column (`relative mx-auto ${LANDING_CONTAINER}`). The backdrop's
+  `absolute inset-0` now resolves against the band: viewport-wide, both columns tall. The
+  content container is `relative` so it paints after the absolutely-positioned backdrop —
+  that is the whole layering contract, and it covers everything inside it, so the
+  intro-section/inner-div `relative` classes it used to need are gone. The band starts
+  exactly where `<main>` used to start, so nothing below the hero moves; the redundant
+  `relative` on the intro section and text wrapper went with the backdrop.
+- **`HeroBackdrop.tsx`** — the horizontal feather pass is deleted: it existed only to
+  disguise the content-column clip, and on a full-bleed panel a hard cut at the viewport
+  edge is invisible (nothing exists beyond it). The vertical pass stays and gains a top
+  fade (`transparent 0 → black 7%`): the band now begins directly under the header, and
+  without it that edge measured a 15–28/255 luminance step. The bottom fade into the
+  `Waves` canvas is unchanged.
+- **`StaticBackdrop`** — the always-painted gradient gains a second layer: a faint
+  (0.12-alpha) vertically-uniform amber sheen on both side edges, minimum at band centre.
+  The Ferrofluid is a sparse, drifting field of rims; at any given instant its glow can be
+  elsewhere, and on a 1920px viewport the outer slivers would otherwise read as flat black
+  again — for reduced-motion users and WebGL-less devices permanently, since the old
+  single radial is anchored top-left and reaches ~zero at the right edge. The sheen is
+  what guarantees the band's margins are never empty; measured edge lift is now ≥19/255
+  at every width versus exactly 0.0 pre-fix.
+
+### 20.3 Verification — `scripts/hero-fullbleed-pass.mjs`, 25/25
+
+Same harness as §16 (real Chromium 153, SwiftShader WebGL, `~/qa-tools` outside the repo;
+the script also self-extracts the `libnss3`/`libnspr4` that @sparticuz/chromium ships).
+Screenshots at 375/768/1280/1920 in `docs/hero-fullbleed-shots/`.
+
+| Check | 375 | 768 | 1280 | 1920 |
+|---|---|---|---|---|
+| Backdrop spans full width (x=0, w=viewport) | ✅ | ✅ | ✅ | ✅ |
+| Backdrop spans band top-to-bottom, both columns | ✅ | ✅ | ✅ | ✅ |
+| CTAs hit-test as links over the backdrop | ✅ | ✅ | ✅ | ✅ |
+| No horizontal scroll / overflow; hero-status layout unchanged | ✅ | ✅ | ✅ | ✅ |
+| Texture at both viewport edges (pixel scan) | ✅ 226/19.6 | ✅ 226/19.5 | ✅ 149/28 | ✅ 23.6/19.7 |
+| Canvas backing = band at dpr=1 | ✅ 375×593 | ✅ 768×596 | ✅ 1280×417 | ✅ 1920×417 |
+
+Reduced motion at 1280: **no canvas, no chunk import**, static gradient full-bleed ✅.
+
+The layout contract is additionally re-proven by the repo's own
+`scripts/landing-responsive-pass.mjs` — **8/8** (4 widths × both motion preferences):
+same content widths, same split/stacked hero-status geometry, banner/footer alignment,
+map bundle still deferred. Its two selectors were updated for the new structure and
+nothing else: the CTAs are found by "not in the header" instead of "inside `<main>`"
+(they moved out with the hero band), and the reveal-resolution loop walks
+`section[aria-label]` instead of `main section`.
+
+`scripts/hero-pass.mjs` (§16) was also re-run, before and after the fix: items 1, 2, 5, 6
+pass on both — including the seam scans, now trivially clean at the panel's side edges
+(**0.39/255**, was 11.17 pre-§16.3c) because the panel's edges moved to the viewport
+boundary. Items 3 (desktop pause leg) and 4 fail **identically on the pre-fix build**,
+i.e. they are stale §16-era expectations, not regressions: at today's geometry the
+"How it works" list sits at top=593px in a 1280×800 viewport — genuinely on screen at
+rest — so its observer correctly fires at load, which item 4's "must stay ~0" predates.
+Recorded here rather than silently ignored.
+
+### 20.4 Cost
+
+Full-bleed grows the shaded area ~3.2× at 1920 (738×337 → 1920×417 at dpr=1). On this
+SwiftShader (CPU) rasterizer the unthrottled frame cost rose accordingly — a software
+floor, not a phone number (§16.4). Every §15.2 mitigation is unchanged and still
+verified to engage: dpr still hard-capped at 1, still lazy + idle-gated + visibility-gated,
+still paused off-screen and on `document.hidden`, still reduced-motion-skipped entirely.
+The `Waves` mask (transparent to 380px) now overlaps the band's fading tail on stacked
+(viewport < 1024px) layouts, where the band grew downward to include the overview column;
+both layers are already frame-capped and the crossfade is the intended dissolve.
+
+`npm run typecheck`, `npm test` (**190 passing, 20 files**) and `npm run build` all green.
