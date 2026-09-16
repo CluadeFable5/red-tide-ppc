@@ -11,6 +11,7 @@ import {
   type SheetOffsets,
   chromeOpacity,
   clampOffset,
+  headerOpacity,
   isDragTail,
   nearestAnchor,
   nextSheetAnchor,
@@ -35,9 +36,9 @@ const OFFSETS = sheetOffsets(HEIGHT)
 
 describe('sheetOffsets', () => {
   it('places each anchor at the complement of its visible ratio', () => {
-    expect(OFFSETS.peek).toBeCloseTo(HEIGHT * 0.86)
-    expect(OFFSETS.mid).toBeCloseTo(HEIGHT * 0.55)
-    expect(OFFSETS.full).toBeCloseTo(HEIGHT * 0.15)
+    expect(OFFSETS.peek).toBeCloseTo(HEIGHT * (1 - SHEET_VISIBLE_RATIO.peek))
+    expect(OFFSETS.mid).toBeCloseTo(HEIGHT * (1 - SHEET_VISIBLE_RATIO.mid))
+    expect(OFFSETS.full).toBeCloseTo(HEIGHT * (1 - SHEET_VISIBLE_RATIO.full))
   })
 
   it('orders anchors top-to-bottom and keeps every anchor on screen', () => {
@@ -56,9 +57,18 @@ describe('sheetOffsets', () => {
     }
   })
 
-  it('respects the briefed peek band', () => {
+  it('respects the briefed peek band and full cap', () => {
     expect(SHEET_VISIBLE_RATIO.peek).toBeGreaterThanOrEqual(0.12)
-    expect(SHEET_VISIBLE_RATIO.peek).toBeLessThanOrEqual(0.15)
+    expect(SHEET_VISIBLE_RATIO.peek).toBeLessThanOrEqual(0.18)
+    expect(SHEET_VISIBLE_RATIO.mid).toBeGreaterThanOrEqual(0.45)
+    expect(SHEET_VISIBLE_RATIO.mid).toBeLessThanOrEqual(0.55)
+    expect(SHEET_VISIBLE_RATIO.full).toBeGreaterThanOrEqual(0.85)
+    expect(SHEET_VISIBLE_RATIO.full).toBeLessThanOrEqual(0.9)
+  })
+
+  it('caps full at 88vh per spec, never unbounded', () => {
+    expect(SHEET_VISIBLE_RATIO.full).toBeLessThanOrEqual(0.9)
+    expect(SHEET_VISIBLE_RATIO.full).toBeGreaterThanOrEqual(0.85)
   })
 })
 
@@ -76,9 +86,9 @@ describe('clampOffset', () => {
 
 describe('sheetVisibleRatio', () => {
   it('reports the visible fraction at each anchor', () => {
-    expect(sheetVisibleRatio(OFFSETS.peek, HEIGHT)).toBeCloseTo(0.14)
-    expect(sheetVisibleRatio(OFFSETS.mid, HEIGHT)).toBeCloseTo(0.45)
-    expect(sheetVisibleRatio(OFFSETS.full, HEIGHT)).toBeCloseTo(0.85)
+    expect(sheetVisibleRatio(OFFSETS.peek, HEIGHT)).toBeCloseTo(SHEET_VISIBLE_RATIO.peek)
+    expect(sheetVisibleRatio(OFFSETS.mid, HEIGHT)).toBeCloseTo(SHEET_VISIBLE_RATIO.mid)
+    expect(sheetVisibleRatio(OFFSETS.full, HEIGHT)).toBeCloseTo(SHEET_VISIBLE_RATIO.full)
   })
 
   it('falls back to the peek ratio when the viewport is unknown', () => {
@@ -94,8 +104,6 @@ describe('nearestAnchor', () => {
   })
 
   it('resolves an exact midpoint to the lower anchor, never the higher one', () => {
-    // Integer offsets, because a computed midpoint of the real ratios is never
-    // exactly equidistant in binary floating point.
     const exact: SheetOffsets = { peek: 100, mid: 50, full: 0 }
     expect(nearestAnchor(75, exact)).toBe('peek')
     expect(nearestAnchor(25, exact)).toBe('mid')
@@ -117,8 +125,6 @@ describe('resolveSheetAnchor', () => {
   })
 
   it('projects the release point forward with velocity', () => {
-    // Just past mid, moving up at 1000 px/s: the projection (180px) is past
-    // full, so the flick should carry all the way, not stop at mid.
     const target = resolveSheetAnchor({
       offset: OFFSETS.mid + 10,
       velocity: -1000,
@@ -128,7 +134,6 @@ describe('resolveSheetAnchor', () => {
   })
 
   it('lets a fast downward flick travel back down even from near full', () => {
-    // One anchor per flick at moderate speed...
     expect(
       resolveSheetAnchor({
         offset: OFFSETS.full + 20,
@@ -137,7 +142,6 @@ describe('resolveSheetAnchor', () => {
       }),
     ).toBe('mid')
 
-    // ...and two when it is thrown hard enough to project past mid.
     expect(
       resolveSheetAnchor({
         offset: OFFSETS.full + 20,
@@ -148,8 +152,6 @@ describe('resolveSheetAnchor', () => {
   })
 
   it('always advances at least one anchor on a flick', () => {
-    // Exactly at the threshold, the projected point is still closest to peek —
-    // the guaranteed step is the only thing that opens the sheet here.
     expect(
       resolveSheetAnchor({
         offset: OFFSETS.peek - 2,
@@ -166,7 +168,6 @@ describe('resolveSheetAnchor', () => {
       }),
     ).toBe('mid')
 
-    // Just under the threshold it is a slow release, and position wins.
     expect(
       resolveSheetAnchor({
         offset: OFFSETS.peek - 2,
@@ -194,8 +195,6 @@ describe('resolveSheetAnchor', () => {
   })
 
   it('ignores elastic overshoot beyond the constraints', () => {
-    // dragElastic lets the sheet travel past `peek` while dragging; the snap
-    // must not read that overshoot as "further down than peek".
     const target = resolveSheetAnchor({
       offset: OFFSETS.peek + 260,
       velocity: 0,
@@ -241,12 +240,10 @@ describe('underlay', () => {
   it('runs 0 at peek → 1 at full', () => {
     expect(underlayProgress(OFFSETS.peek, OFFSETS)).toBeCloseTo(0)
     expect(underlayProgress(OFFSETS.full, OFFSETS)).toBeCloseTo(1)
-    // Mid sits 31/71 of the way from peek to full: (peek - mid) / (peek - full).
     expect(underlayProgress(OFFSETS.mid, OFFSETS)).toBeCloseTo(
       (SHEET_VISIBLE_RATIO.peek - SHEET_VISIBLE_RATIO.mid) /
         (SHEET_VISIBLE_RATIO.peek - SHEET_VISIBLE_RATIO.full),
     )
-    // Sanity: past the halfway point of the travel, but not yet receded fully.
     expect(underlayProgress(OFFSETS.mid, OFFSETS)).toBeGreaterThan(0.25)
     expect(underlayProgress(OFFSETS.mid, OFFSETS)).toBeLessThan(0.75)
   })
@@ -273,7 +270,6 @@ describe('underlay', () => {
     expect(underlayVeil(1)).toBeCloseTo(UNDERLAY_VEIL_AT_FULL)
     expect(underlayShadow(1)).toBeCloseTo(UNDERLAY_SHADOW_AT_FULL)
 
-    // Out-of-range progress must never over-shoot the token values.
     expect(underlayScale(4)).toBeCloseTo(UNDERLAY_SCALE_AT_FULL)
     expect(underlayRadius(-4)).toBe(0)
     expect(underlayVeil(Number.NaN)).toBe(0)
@@ -298,10 +294,75 @@ describe('chromeOpacity', () => {
   })
 
   it('keeps the chrome visible when progress is unknown', () => {
-    // Failing *visible* is the right direction here: a NaN progress should not
-    // blank the legend and the gauge off the map.
     expect(chromeOpacity(Number.NaN)).toBe(1)
     expect(chromeOpacity(-1)).toBe(1)
+  })
+})
+
+describe('headerOpacity', () => {
+  it('stays fully visible at peek and mid, only fades at full', () => {
+    expect(headerOpacity(0)).toBe(1) // peek
+    expect(headerOpacity(0.48)).toBe(1) // mid ~0.48 progress
+    expect(headerOpacity(0.65)).toBe(1) // still visible at 65% threshold
+    expect(headerOpacity(0.825)).toBeCloseTo(0.5) // half-faded at midpoint of 0.65-1.0 with smoothstep
+    expect(headerOpacity(1)).toBe(0) // full
+  })
+
+  it('fades back in promptly when dragging down from full to mid', () => {
+    expect(headerOpacity(0.9)).toBeGreaterThan(0)
+    expect(headerOpacity(0.9)).toBeLessThan(0.3)
+    expect(headerOpacity(0.75)).toBeGreaterThan(0.5)
+    expect(headerOpacity(0.65)).toBe(1)
+    expect(headerOpacity(0.5)).toBe(1)
+  })
+
+  it('uses smoothstep easing so fast flick peek→full is not jarring glitch', () => {
+    const samples = [0.65, 0.75, 0.825, 0.9, 1.0].map((p) => headerOpacity(p))
+    for (let i = 1; i < samples.length; i++) {
+      expect(samples[i]).toBeLessThanOrEqual(samples[i - 1])
+    }
+    expect(samples[1]).toBeGreaterThan(0.5)
+    expect(samples[1]).toBeLessThan(1)
+    expect(samples[2]).toBeCloseTo(0.5, 1)
+    expect(samples[3]).toBeGreaterThan(0)
+    expect(samples[3]).toBeLessThan(0.5)
+    const delta1 = samples[0] - samples[1]
+    const delta2 = samples[1] - samples[2]
+    expect(delta1).toBeLessThan(delta2)
+  })
+
+  it('keeps header visible when progress unknown', () => {
+    expect(headerOpacity(Number.NaN)).toBe(1)
+    expect(headerOpacity(-1)).toBe(1)
+  })
+
+  it('supports reduced-motion instant swap at same threshold', () => {
+    const peekOpacity = headerOpacity(0)
+    const fullOpacity = headerOpacity(1)
+    expect(peekOpacity).toBe(1)
+    expect(fullOpacity).toBe(0)
+    const pointerEvents = (p: number) => (headerOpacity(p) < 0.1 ? 'none' : 'auto')
+    expect(pointerEvents(0)).toBe('auto')
+    expect(pointerEvents(0.65)).toBe('auto')
+    expect(pointerEvents(1)).toBe('none')
+  })
+
+  it('mid progress stays comfortably below threshold for all viewport heights', () => {
+    const heights = [300, 400, 500, 568, 667, 736, 812, 844, 896, 926, 1024, 1180, 1366]
+    for (const h of heights) {
+      const offsets = sheetOffsets(h)
+      const span = offsets.peek - offsets.full
+      const progressMid = span > 0 ? (offsets.peek - offsets.mid) / span : 0
+      expect(progressMid).toBeCloseTo(0.4795, 3)
+      expect(progressMid).toBeLessThan(0.65)
+      const marginProgress = 0.65 - progressMid
+      const marginPx = marginProgress * span
+      expect(marginPx).toBeGreaterThan(30)
+      const offset60 = h * (1 - 0.6)
+      const progress60 = span > 0 ? (offsets.peek - offset60) / span : 0
+      expect(progress60).toBeLessThan(0.65)
+      expect(headerOpacity(progress60)).toBe(1)
+    }
   })
 })
 

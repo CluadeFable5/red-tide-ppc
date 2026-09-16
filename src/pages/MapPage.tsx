@@ -26,16 +26,21 @@ import type { Zone, ZoneStatus } from '../types'
  *     sheet rises. This is what makes the sheet read as a surface sliding over
  *     the map instead of a panel glued to the bottom of the screen.
  *  3. Floating chrome: the app bar, the status pill row, the advisory gauge.
- *  4. The zone sheet, at peek / mid / full.
+ *  4. The zone sheet, at peek / mid / full — detents 15% / 50% / 88%.
  *  5. Modals: the report form, then toasts.
  *
- * There is no page scroll. Everything that used to live below the fold (the
- * advisory banner, the zone list, the red-tide primer, the demo notice) lives in
- * the sheet, which is why the zones are now two gestures away instead of a scroll
- * away, and why the map is no longer capped at a slice of the viewport.
+ * MAP INTERACTIVITY PER STATE
+ * ---------------------------
+ * peek (15%): map 85% visible, fully interactive — pan/zoom/tap zones.
+ * mid (50%): map 50% visible, interactive in top half. User can scan list
+ *   while still panning map.
+ * full (88%): map NOT interactive — veil + scale + blocking overlay. List
+ *   scrolls internally, sheet caps at 88vh. Tapping map strip collapses to mid.
+ *   This matches native map apps: at full, focus is list, map is depth cue.
  *
- * The store calls below are unchanged — this page still reads zones/reports and
- * calls the same actions. Only the presentation moved.
+ * There is no page scroll. Everything that used to live below the fold lives
+ * in the sheet, which is why the zones are now two gestures away instead of a
+ * scroll away, and why the map is no longer capped at a slice of the viewport.
  */
 export function MapPage() {
   const zones = useAppStore((state) => state.zones)
@@ -76,15 +81,6 @@ export function MapPage() {
 
   const reportZone = selectZoneById(zones, reportZoneId)
 
-  // Presentation latch.
-  //
-  // `submitReport` clears `reportZoneId` the instant the write succeeds, which
-  // would unmount the sheet before it could show its success state or play its
-  // exit animation. Holding the zone object here keeps the sheet mounted and
-  // hands `ReportForm` an `open` flag to animate against instead.
-  //
-  // This changes nothing about the data flow: the store still decides when the
-  // form is open, and `open` is derived straight from it.
   const [heldZone, setHeldZone] = useState<Zone | null>(null)
   useEffect(() => {
     if (reportZone) setHeldZone(reportZone)
@@ -93,11 +89,10 @@ export function MapPage() {
   function focusZone(zoneId: string) {
     selectZone(zoneId)
     setFocusToken((token) => token + 1)
-    // Picking a zone from the list zooms the map out of sight under the sheet,
-    // so drop the sheet back to peek to actually show it. Without this the list
-    // is a dead end: you tap a zone and nothing appears to happen.
     if (sheet.anchor !== 'peek') sheet.goTo('peek')
   }
+
+  const isMapInteractive = sheet.anchor !== 'full'
 
   return (
     <div className="relative h-[100dvh] overflow-hidden bg-ink">
@@ -105,7 +100,7 @@ export function MapPage() {
       {/* ------------------------------------------------------------------
           Layer 1 + 2: the map and its underlay.
           The recede is driven entirely by the sheet's progress value — scale
-          to 0.96, corner radius up to 18px, veil and inset shadow in — so the
+          to 0.96, corner radius up to 16px, veil and inset shadow in — so the
           whole thing is continuous through a drag rather than snapping at the
           end of it.
           ------------------------------------------------------------------ */}
@@ -137,55 +132,79 @@ export function MapPage() {
           style={{ opacity: sheet.underlay.veil }}
           className="pointer-events-none absolute inset-0 bg-ink"
         />
-        {/* Inset shadow: the depth cue the veil cannot give — the sheet is
-            casting onto the surface it is covering. Opacity-only, so this
-            never repaints a shadow during a drag. */}
+        {/* Inset shadow: depth cue */}
         <motion.span
           aria-hidden="true"
           style={{ opacity: sheet.underlay.shadow }}
           className="pointer-events-none absolute inset-0 shadow-[inset_0_-36px_64px_-30px_rgba(0,0,0,0.95)]"
         />
+
+        {/* Full-state blocking overlay — map NOT interactive at full */}
+        {sheet.anchor === 'full' && (
+          <button
+            type="button"
+            aria-label="Collapse sheet to mid — map is currently not interactive"
+            onClick={() => sheet.goTo('mid')}
+            className="absolute inset-0 z-10 cursor-pointer bg-transparent"
+            style={{ touchAction: 'none' }}
+          />
+        )}
       </motion.div>
 
       {/* ------------------------------------------------------------------
-          Layer 3: floating chrome. Unchanged controls, plus the legend and
-          gauge, which fade out as the sheet rises instead of being covered.
+          Layer 3: floating chrome.
+          - Legend & gauge fade early (before mid) so nothing half-covered.
+          - Header fades late (only at full) — visible at mid/peek, hidden at
+            full. This avoids stale-chrome: when dragging down from full to
+            mid/peek, header fades back in promptly by 70% progress (headerOpacity
+            = 1 - (p-0.7)/0.3), so it's fully visible again at mid (p=0.48).
+          - pointer-events disabled when faded out at full (via motion value),
+            so invisible header can't be tapped, but re-enables once visible.
           ------------------------------------------------------------------ */}
-      <Header
-        overlay
-        eyebrow="Puerto Princesa, Palawan"
-        title="Red Tide"
-        right={
-          <>
-            <DemoBanner variant="chip" />
-            <button
-              type="button"
-              onClick={() => setResetToken((token) => token + 1)}
-              aria-label="Reset view"
-              title="Reset view"
-              className="grid h-8 w-8 place-items-center rounded-md border border-line bg-ink-2/85 text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent active:scale-95"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="h-4 w-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                aria-hidden="true"
+      <motion.div
+        style={{
+          opacity: sheet.headerOpacity,
+          pointerEvents: sheet.headerPointerEvents as any,
+        }}
+        data-testid="header-chrome"
+        data-visible={sheet.anchor === 'full' ? 'false' : 'true'}
+      >
+        <Header
+          overlay
+          eyebrow="Puerto Princesa, Palawan"
+          title="Red Tide"
+          right={
+            <>
+              <DemoBanner variant="chip" />
+              <button
+                type="button"
+                onClick={() => setResetToken((token) => token + 1)}
+                aria-label="Reset view"
+                title="Reset view"
+                className="grid h-8 w-8 place-items-center rounded-md border border-line bg-ink-2/85 text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent active:scale-95"
               >
-                <circle cx="12" cy="12" r="7" />
-                <path strokeLinecap="round" d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-              </svg>
-            </button>
-            <Link
-              to="/admin"
-              className="rounded-md border border-line bg-ink-2/85 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent"
-            >
-              Admin
-            </Link>
-          </>
-        }
-      />
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="7" />
+                  <path strokeLinecap="round" d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                </svg>
+              </button>
+              <Link
+                to="/admin"
+                className="rounded-md border border-line bg-ink-2/85 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent"
+              >
+                Admin
+              </Link>
+            </>
+          }
+        />
+      </motion.div>
 
       <Legend counts={statusCounts} style={{ opacity: sheet.chromeOpacity }} />
 
@@ -198,8 +217,16 @@ export function MapPage() {
 
       {!zonesReady && <MapLoadingOverlay />}
 
+      {/* Debug hint for map interactivity — not visible but for tests */}
+      <span
+        data-testid="map-interactivity"
+        data-interactive={isMapInteractive ? 'true' : 'false'}
+        className="sr-only"
+        aria-hidden="true"
+      />
+
       {/* ------------------------------------------------------------------
-          Layer 4: the sheet itself.
+          Layer 4: the sheet itself — 15% / 50% / 88% detents.
           ------------------------------------------------------------------ */}
       <ZoneSheet
         zones={zones}

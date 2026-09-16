@@ -19,14 +19,16 @@
      `src/lib/breakpoints.ts`. Change it here and both follow.               */
   --breakpoint-sm: 40rem;
 
-  /* -- Ground ------------------------------------------------------------ */
-  --color-ink: #080808;
+  /* -- Ground ------------------------------------------------------------
+     Updated to #0a0a0a-ish per visual target: near-black ground, slightly
+     lighter raised surfaces, dim hairlines. Matches mockup reference. */
+  --color-ink: #0a0a0a;
   /* Raised surfaces: sheets, cards, popups. */
-  --color-ink-2: #101010;
-  --color-ink-3: #171717;
+  --color-ink-2: #141414;
+  --color-ink-3: #1e1e1e;
   /* Hairlines. Kept dim: on near-black, a bright border reads as a mistake. */
-  --color-line: #242424;
-  --color-line-soft: #1a1a1a;
+  --color-line: #2a2a2a;
+  --color-line-soft: #1e1e1e;
 
   /* -- Accent ------------------------------------------------------------ */
   --color-accent: #f0a500;
