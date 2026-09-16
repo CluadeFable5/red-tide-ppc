@@ -55,7 +55,7 @@ Red Tide PPC gives those sightings somewhere to go, and gives a local reviewer a
 
 **Core loop**
 
-1. **Public map at `/map`** — a Leaflet map of the Puerto Princesa coastline. Each zone is a coloured polygon:
+1. **Public map at `/map`** — a Leaflet map of the Puerto Princesa coastline. Each zone is a coloured polygon traced against the actual shoreline:
    - 🟢 **Safe** — no advisory recorded.
    - 🟡 **Unconfirmed** — flagged by an admin as needing a check; treat with caution.
    - 🔴 **Advisory** — confirmed; do not eat shellfish from this zone.
@@ -168,7 +168,7 @@ The seed script reads the same `.env` as the app and writes the six zones define
 
 Polygons are stored as arrays of `{lat, lng}` objects: Firestore rejects nested arrays, so the `[lat, lng]` tuples the app uses are converted on the way in (`toFirestorePolygon`) and back to tuples on the way out (`normalizePolygon`). `seed:dry-run` also validates every payload shape before touching the network.
 
-### 4.5 Verify
+### 4.6 Verify
 
 Reload the app. The amber **demo mode** banner should be gone, and a report submitted in one browser should appear in the admin queue of another.
 
@@ -217,9 +217,9 @@ src/
     backend.ts            # Backend contract + which implementation to use
     backend.firebase.ts   # Firestore + Cloudinary upload plumbing
     backend.demo.ts       # in-memory / localStorage implementation
-    firestoreMapping.ts   # Firestore doc → domain type (pure, unit-tested)
+    firestoreMapping.ts   # Firestore doc -> domain type (pure, unit-tested)
     firebase.ts           # Firebase bootstrap + env parsing
-    status.ts             # status → colour / label / guidance (single source)
+    status.ts             # status -> colour / label / guidance (single source)
     format.ts             # date + relative time + byte formatting (PHT)
     image.ts              # photo size/type checks, downscale for demo mode
   components/
@@ -228,28 +228,31 @@ src/
     ReportForm.tsx        # report modal / bottom sheet
     ReportCard.tsx        # one report in the admin queue
     AdminGate.tsx         # passcode screen
-    ZoneSheet.tsx         # three-anchor bottom sheet: advisories + zone list
+    ZoneSheet.tsx         # three-anchor bottom sheet (peek/mid/full): advisories + zone list,
+                           # left status-accent cards, spring-driven with velocity-aware snap
     StatusPip.tsx         # the status dot (pops on status change)
-    Ambient.tsx           # advisory-signal gauge + map scanline (schematic)
+    Ambient.tsx            # advisory-signal gauge + map scanline (schematic)
     Header.tsx  Legend.tsx  StatusBadge.tsx  Notice.tsx  DemoBanner.tsx
     DecryptedText.tsx     # landing hero: glyphs resolve left to right (reactbits pattern)
     Waves.tsx             # landing background: three sine composites on a canvas
     CountUp.tsx           # landing figures: counts up on first view, re-tweens on live updates
     BlurText.tsx          # landing copy: words blur into focus on their own scroll trigger
-    HeroBackdrop.tsx      # landing hero backdrop: owns the WebGL policy (see docs §15)
-    ferrofluid/           # the `ogl` shader itself — reach it only via HeroBackdrop
-    Map.test.tsx          # regression: the zone-path classes in a production render
+    HeroBackdrop.tsx      # landing hero backdrop: full-bleed WebGL panel, owns the
+                           # reduced-motion/off-screen/lazy-load policy (see docs §15, §20)
+    ferrofluid/            # the `ogl` shader itself -- reach it only via HeroBackdrop
+    Map.test.tsx           # regression: the zone-path classes in a production render
   motion/
     RouteTransition.tsx   # landing <-> map <-> admin route transition (fade + rise; see docs §19)
-    sheetAnchors.ts       # peek/mid/full maths + snap + underlay (pure, tested)
+    sheetAnchors.ts       # peek/mid/full maths, snap velocity projection, underlay +
+                           # header-chrome opacity (pure, tested)
     readouts.ts           # data-derived sheet copy + gauge wave (pure, tested)
-    useZoneSheet.ts       # sheet position/anchors + underlay motion values
+    useZoneSheet.ts        # sheet position/anchors + underlay + header motion values
   styles/
     statusTheme.ts        # status -> dark-theme colours, classes, map paint
   pages/
-    Landing.tsx           # / — pre-map landing (DecryptedText hero, Waves, CountUp)
-    MapPage.tsx           # /map public view (lazy-loaded)
-    Admin.tsx             # /admin review dashboard
+    Landing.tsx            # / -- pre-map landing (DecryptedText hero, Waves, CountUp)
+    MapPage.tsx             # /map public view (lazy-loaded)
+    Admin.tsx               # /admin review dashboard
 ```
 
 **Split suggestion:** one developer owns `Map.tsx` / `MapPage.tsx` / `Legend.tsx`; the other owns `ReportForm.tsx` / `Admin.tsx` / `AdminGate.tsx` / `ReportCard.tsx`. `store.ts`, `types.ts` and `status.ts` are the shared contract — change them together.
@@ -294,17 +297,22 @@ Notes:
 - Env vars are baked in **at build time**. Changing them requires a redeploy.
 - Make sure the deployed Firestore rules are the ones in this repo, and restrict the unsigned Cloudinary preset for production.
 - Map tiles come from OpenStreetMap and need the visitor to be online.
+- If you pause/unpause auto-publishing to conserve build minutes or bandwidth on a free tier: a **paused site serves nothing to visitors**, and new commits won't auto-deploy until you resume it. Before pausing again after a redeploy, confirm the deploy log shows every stage (Initializing → Building → Deploying → Cleanup → Post-processing) as **Complete** — otherwise you can end up pausing mid-build on a stale or broken version without noticing.
 
 ---
 
-## 10. Zone boundaries are approximate
+## 10. Zone boundaries
 
-The polygons in `src/data/zones.ts` are **hand-drawn approximations**. They are placed over real water and anchored on verified OpenStreetMap reference points — the Bancao-Bancao lighthouse, the Santa Lourdes wharf, Cowrie/Cañon/Luli and the other Honda Bay islands, Sabang village and Saint Paul Rock — and every vertex sits at least ~1 km clear of the mapped shoreline. They exist to say "this is your bay" on a phone screen — **they are not survey boundaries and not official BFAR fisheries areas.**
+The polygons in `src/data/zones.ts` are **hand-drawn approximations, traced against the real coastline** — not survey boundaries and not official BFAR fisheries areas. Each zone's shape follows the shoreline stretch its name and description describe (mangrove edge, bay shallows, island cluster, port frontage, and so on), so the polygon actually overlaps the water people fish, glean, or gather shellfish in, rather than floating out in open sea disconnected from land.
+
+Reference points used to anchor the shapes: the Bancao-Bancao lighthouse, the Santa Lourdes wharf, Cowrie/Cañon/Luli and the other Honda Bay islands, Sabang village, and Saint Paul Rock.
 
 Two caveats worth knowing:
 
-- The outlines are simplified to 6–8 vertices each, so a zone edge can cut across a mangrove islet or a small headland. They mark an area, not a boundary line.
+- The outlines are simplified to a handful of vertices each, so a zone edge can cut across a mangrove islet or a small headland. They mark an area, not a precise boundary line.
 - `binuatan` is a legacy id: there is no coastal place called Binuatan (the only Binuatan in the Philippines is a weaving centre in Barangay Santa Monica, inside the city). That polygon covers the real northeast-coast water off the Marayugon and Babuyan barangays.
+
+> **Provenance note:** an earlier revision of these polygons was placed by offset from the coastline (vertices deliberately kept clear of the mapped shore) rather than traced along it, which put the shapes out in open water instead of over the areas the app is meant to warn people about. If you're touching this file, verify visually that every zone's near-land edge actually sits against the shoreline — zoom the map into each zone individually and check for a gap of open water between the polygon and the coast before committing.
 
 Before this is used for real public-health decisions, replace them with the actual boundaries from BFAR or the Puerto Princesa City LGU.
 
@@ -329,7 +337,7 @@ Before this is used for real public-health decisions, replace them with the actu
 2. **Tighten `firestore.rules`** once zones are seeded (`allow create: if false` on `zones`).
 3. **Add rate limiting / basic spam control** on report creation — right now anyone can flood the queue.
 4. **Store the reviewer and timestamp** on approve/reject for accountability (`reviewedAt` is already written; `reviewedBy` needs auth).
-5. **Replace the polygons** with real boundaries.
+5. **Replace the polygons** with real boundaries (see §10).
 6. **Compress or resize photos client-side** before upload to keep bandwidth use and load times down.
 
 ---
@@ -340,19 +348,19 @@ Before this is used for real public-health decisions, replace them with the actu
 npm test
 ```
 
-142 tests across eleven files:
+A growing suite across the following areas (see `docs/` for the browser-verification write-ups behind recent UI passes — bottom sheet redesign, header fade timing, hero full-bleed, coastal polygon accuracy):
 
-- **`src/App.test.tsx`** (5, jsdom) — the whole loop rendered for real: landing → map → tap a zone → report → `/admin` → wrong passcode rejected → correct passcode → Approve → zone turns advisory → public map shows the advisory. Plus the landing page's decrypted hero and live readout, a photo attachment run end to end, and a check that a too-short report submits nothing.
-- **`src/pages/mapPass.test.tsx`** (6, jsdom) — the six-item visual pass, DOM side: peek row content + hidden body, anchor cycling, the `zone-path` fill ramp, attribution, zoom-control placement, and the full report → approve loop.
-- **`src/components/Map.test.tsx`** (6, jsdom) — the production `zone-path` regression: the class lands on the path node in a single-pass render (no StrictMode double effect), `--selected` syncs from first mount onward, the fill ramp follows selection, and press feedback lights/releases the polygon.
-- **`src/store.test.ts`** (13) — the real store against the real (in-memory) backend: seeded zones load `safe`; `submitReport` writes a pending report; short descriptions are refused; `approveReport` confirms the report **and** flips the zone to `advisory`; `rejectReport` leaves the zone untouched; manual revert to `safe` works; pending counts are right; the passcode gate only unlocks on an exact match.
-- **`src/lib/firestoreMapping.test.ts`** (28) — the production-only mapping path: Timestamps, GeoPoints, unresolved `serverTimestamp()` values, malformed documents, and polygon values.
-- **`src/motion/sheetAnchors.test.ts`** (32) — the sheet's snap arithmetic: offsets, clamping, velocity projection, flick gating, underlay mapping.
-- **`src/lib/firebase.test.ts`** (21) — `readFirebaseConfig` returns a config only when all five keys are real, so a half-filled `.env` falls back to demo mode instead of half-initialising Firebase.
-- **`src/motion/readouts.test.ts`** (18) — the data-derived copy: peek summary, anchor readout, dominant status, advisory share.
-- **`src/data/zones.test.ts`** (8) — polygon sanity: unique ids, plausible coordinates inside the Puerto Princesa box, the two Honda Bay zones do not overlap, bounding box contains every vertex.
-- **`src/lib/backend.firebase.test.ts`** (3) — Cloudinary uploads use the correct endpoint and form fields, return `secure_url`, and surface configuration/API errors.
-- **`src/lib/firestoreSeedValidation.test.ts`** (2) — seed payloads pass the shape Firestore actually rejects on.
+- **`src/App.test.tsx`** (jsdom) — the whole loop rendered for real: landing → map → tap a zone → report → `/admin` → wrong passcode rejected → correct passcode → Approve → zone turns advisory → public map shows the advisory. Plus the landing page's decrypted hero and live readout, a photo attachment run end to end, and a check that a too-short report submits nothing.
+- **`src/pages/mapPass.test.tsx`** (jsdom) — the six-item visual pass, DOM side: peek row content + hidden body, anchor cycling, the `zone-path` fill ramp, attribution, zoom-control placement, and the full report → approve loop.
+- **`src/components/Map.test.tsx`** (jsdom) — the production `zone-path` regression: the class lands on the path node in a single-pass render (no StrictMode double effect), `--selected` syncs from first mount onward, the fill ramp follows selection, and press feedback lights/releases the polygon.
+- **`src/store.test.ts`** — the real store against the real (in-memory) backend: seeded zones load `safe`; `submitReport` writes a pending report; short descriptions are refused; `approveReport` confirms the report **and** flips the zone to `advisory`; `rejectReport` leaves the zone untouched; manual revert to `safe` works; pending counts are right; the passcode gate only unlocks on an exact match.
+- **`src/lib/firestoreMapping.test.ts`** — the production-only mapping path: Timestamps, GeoPoints, unresolved `serverTimestamp()` values, malformed documents, and polygon values.
+- **`src/motion/sheetAnchors.test.ts`** — the sheet's snap arithmetic: offsets, clamping, velocity projection, flick gating, underlay mapping, and header-chrome fade timing (threshold, easing curve, reduced-motion instant swap).
+- **`src/lib/firebase.test.ts`** — `readFirebaseConfig` returns a config only when all five keys are real, so a half-filled `.env` falls back to demo mode instead of half-initialising Firebase.
+- **`src/motion/readouts.test.ts`** — the data-derived copy: peek summary, anchor readout, dominant status, advisory share.
+- **`src/data/zones.test.ts`** — polygon sanity: unique ids, plausible coordinates inside the Puerto Princesa box, the two Honda Bay zones do not overlap, bounding box contains every vertex, and every zone's near-land edge actually sits against the coastline (no open-water gap).
+- **`src/lib/backend.firebase.test.ts`** — Cloudinary uploads use the correct endpoint and form fields, return `secure_url`, and surface configuration/API errors.
+- **`src/lib/firestoreSeedValidation.test.ts`** — seed payloads pass the shape Firestore actually rejects on.
 
 The Firestore mapping tests matter because that code only runs against a real project — the demo backend never touches it.
 
@@ -367,13 +375,15 @@ node scripts/final-pass.mjs   # in another — 6/6 checks, exit 0
 
 Tiles and webfonts are allowed to fail (offline sandboxes): every assertion targets the app's own UI. Where a sandbox has no browser at all, the DOM/behaviour half of the same six items runs in CI via `src/pages/mapPass.test.tsx`.
 
+Additional one-off verification scripts (bottom sheet snap points, header fade timing, coastal polygon accuracy, hero full-bleed) live in `scripts/` alongside their write-ups in `docs/` — check there before re-deriving something that has already been measured.
+
 ---
 
 ## 14. Making common changes
 
 | I want to… | Touch this |
 | --- | --- |
-| **Add or edit a zone** | `src/data/zones.ts` → then `npm run seed -- --force` to push it. In demo mode, clear `localStorage` to re-seed. |
+| **Add or edit a zone** | `src/data/zones.ts` → then `npm run seed -- --force` to push it. In demo mode, clear `localStorage` to re-seed. Verify the new polygon actually touches the coastline (see §10) before shipping. |
 | **Replace the polygons with real boundaries** | Same file. `polygon` accepts `[lat, lng]` pairs; the mapper also tolerates `{latitude, longitude}` GeoPoints entered in the console. |
 | **Change a status colour** | `src/lib/status.ts` (`hex` is what Leaflet draws) **and** the `@theme` block in `src/index.css` — they are duplicated on purpose and must be kept in sync. |
 | **Change the advisory wording** | `guidance` in `src/lib/status.ts`; the long explainer is in `src/pages/MapPage.tsx`. |
@@ -381,6 +391,7 @@ Tiles and webfonts are allowed to fail (offline sandboxes): every assertion targ
 | **Change the photo size limit** | `MAX_PHOTO_BYTES` in `src/lib/image.ts`; mirror the limit in the Cloudinary unsigned upload preset. |
 | **Tighten security** | Update `firestore.rules` and the Cloudinary unsigned preset restrictions. Replacing the passcode means adding Firebase Auth and gating `Admin.tsx` on it. |
 | **Add a new admin action** | Add the action to `src/store.ts` (all datastore calls live there) and call it from `src/pages/Admin.tsx`. |
+| **Adjust the bottom sheet's snap points or feel** | `src/motion/sheetAnchors.ts` (detent ratios, spring constants, header-fade threshold) — pure and unit-tested, change here before touching `ZoneSheet.tsx`. |
 
 ---
 
