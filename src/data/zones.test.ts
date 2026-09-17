@@ -67,14 +67,123 @@ describe('SEED_ZONES', () => {
     }
   })
 
-  it('keeps the two Honda Bay zones from overlapping', () => {
-    const inner = SEED_ZONES.find((z) => z.id === 'honda-inner')!
-    const outer = SEED_ZONES.find((z) => z.id === 'honda-outer')!
-    const innerMax = Math.max(...inner.polygon.map(([lat]) => lat))
-    const outerMin = Math.min(...outer.polygon.map(([lat]) => lat))
-    expect(outerMin).toBeGreaterThan(innerMax)
+  it('keeps every pair of zones from overlapping', () => {
+    // The zones hug the coast and interlock (honda-inner / honda-outer now
+    // span overlapping latitudes by design — inner sits inside the outer's
+    // embayment), so a bounding-box heuristic can no longer prove they are
+    // disjoint. This checks the polygons properly: no edges crossing at an
+    // interior point, no vertex of one strictly inside the other. Zones that
+    // merely share a boundary vertex/edge (they tile, see zones.ts) pass.
+    for (let i = 0; i < SEED_ZONES.length; i++) {
+      for (let j = i + 1; j < SEED_ZONES.length; j++) {
+        const a = SEED_ZONES[i]
+        const b = SEED_ZONES[j]
+        expect(
+          polygonsOverlap(a.polygon, b.polygon),
+          `${a.id} and ${b.id} must not overlap`,
+        ).toBe(false)
+      }
+    }
+  })
+
+  it('anchors every zone at the shoreline', () => {
+    // Regression guard for the original bug: zones floating in open water,
+    // disconnected from the coast they monitor. Each value is a real
+    // OpenStreetMap coastline node on that zone's shore (retrieved 2026-09
+    // via Overpass; see the header of zones.ts for the way ids). Each polygon
+    // must have at least one vertex within ~250 m of its shore node.
+    const shoreNodes: Record<string, [number, number]> = {
+      'pp-bay': [9.7444, 118.7360], // city waterfront S end (way 4247188)
+      'sta-lourdes': [9.8430624, 118.7437516], // Sta. Lourdes pier tip (62049956)
+      'honda-inner': [9.8510028, 118.744658], // mainland shore N of pier
+      'honda-outer': [9.9303358, 118.7543035], // Honda Bay mouth, W shore (1530271755)
+      binuatan: [9.9400388, 118.8206470], // NE coast S end (62049965)
+      sabang: [10.2098884, 118.8676876], // Sabang shore W end (61557844)
+    }
+    for (const zone of SEED_ZONES) {
+      const shore = shoreNodes[zone.id]
+      expect(shore, `${zone.id} needs a shore fixture`).toBeDefined()
+      const minM = Math.min(...zone.polygon.map((p) => metersBetween(p, shore)))
+      expect(
+        minM,
+        `${zone.id} is ${minM.toFixed(0)} m from its shoreline node — too far, it must touch land`,
+      ).toBeLessThan(250)
+    }
   })
 })
+
+// --------------------------------------------------------------------------
+// Small planar geometry helpers. At ~10 km scale and ~10° N, treating
+// [lat, lng] as plane coordinates is accurate to well under the tolerances
+// these tests use.
+// --------------------------------------------------------------------------
+
+type Pt = [number, number]
+
+function orient(a: Pt, b: Pt, c: Pt): number {
+  const v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+  const eps = 1e-9
+  return v > eps ? 1 : v < -eps ? -1 : 0
+}
+
+function onSegment(a: Pt, b: Pt, p: Pt): boolean {
+  // b collinear with a-p and within the bounding box
+  return (
+    Math.min(a[0], p[0]) <= b[0] + 1e-12 &&
+    b[0] <= Math.max(a[0], p[0]) + 1e-12 &&
+    Math.min(a[1], p[1]) <= b[1] + 1e-12 &&
+    b[1] <= Math.max(a[1], p[1]) + 1e-12
+  )
+}
+
+function segmentsCross(p1: Pt, p2: Pt, q1: Pt, q2: Pt): boolean {
+  const o1 = orient(p1, p2, q1)
+  const o2 = orient(p1, p2, q2)
+  const o3 = orient(q1, q2, p1)
+  const o4 = orient(q1, q2, p2)
+  return o1 * o2 < 0 && o3 * o4 < 0
+}
+
+function pointStrictlyInside(p: Pt, ring: Pt[]): boolean {
+  // boundary points never count as inside
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]
+    const b = ring[(i + 1) % ring.length]
+    if (orient(a, p, b) === 0 && onSegment(a, p, b)) return false
+  }
+  let inside = false
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]
+    const b = ring[(i + 1) % ring.length]
+    // standard ray cast along +lng: count lat-edge crossings of the ray
+    if (a[0] > p[0] !== b[0] > p[0]) {
+      const lngAt = a[1] + ((b[1] - a[1]) * (p[0] - a[0])) / (b[0] - a[0])
+      if (p[1] < lngAt) inside = !inside
+    }
+  }
+  return inside
+}
+
+function polygonsOverlap(a: Pt[], b: Pt[]): boolean {
+  for (let i = 0; i < a.length; i++) {
+    const a1 = a[i]
+    const a2 = a[(i + 1) % a.length]
+    for (let j = 0; j < b.length; j++) {
+      if (segmentsCross(a1, a2, b[j], b[(j + 1) % b.length])) return true
+    }
+    if (pointStrictlyInside(a1, b)) return true
+  }
+  for (const p of b) {
+    if (pointStrictlyInside(p, a)) return true
+  }
+  return false
+}
+
+function metersBetween([lat1, lng1]: Pt, [lat2, lng2]: Pt): number {
+  const latM = (lat1 - lat2) * 111_000
+  const lngM = (lng1 - lng2) * 111_000 * Math.cos(((lat1 + lat2) / 2) * (Math.PI / 180))
+  return Math.hypot(latM, lngM)
+}
 
 describe('zonesBoundingBox', () => {
   it('returns null for an empty list', () => {
