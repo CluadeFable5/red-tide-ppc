@@ -74,12 +74,14 @@ export const SEED_ZONES: SeedZone[] = [
     description:
       'The city bay southwest of the poblacion — Bancao-Bancao, San Jose and the port side. Where most city market shellfish is landed.',
     polygon: [
-      // Traces the mapped city shoreline: the bayfront N from the north
-      // end (9.7864, 118.7200) past the cruise port (9.7361, 118.7294),
-      // along the estuary's south shore east to Bancao-Bancao
-      // (9.7285, 118.7493) and the lighthouse (9.7244, 118.7698), then a
-      // straight seaward limit ~2.5 km offshore. River Island
-      // (9.737, 118.699) sits outside the western edge.
+      [9.717, 118.762],
+      [9.712, 118.742],
+      [9.716, 118.725],
+      [9.727, 118.713],
+      [9.742, 118.708],
+      [9.76, 118.7075],
+      [9.776, 118.712],
+      [9.787, 118.7175],
       [9.7864, 118.71996],
       [9.77603, 118.72509],
       [9.77256, 118.72216],
@@ -103,14 +105,37 @@ export const SEED_ZONES: SeedZone[] = [
       [9.72337, 118.76314],
       [9.72184, 118.7622],
       [9.72445, 118.76978],
-      [9.717, 118.762],
-      [9.712, 118.742],
-      [9.716, 118.725],
-      [9.727, 118.713],
-      [9.742, 118.708],
-      [9.76, 118.7075],
-      [9.776, 118.712],
-      [9.787, 118.7175],
+      [9.72105, 118.77095],
+      [9.71517, 118.75388],
+      [9.7206, 118.75722],
+      [9.72069, 118.7566],
+      [9.72396, 118.75334],
+      [9.72382, 118.74847],
+      [9.72527, 118.74693],
+      [9.72391, 118.744],
+      [9.72848, 118.72831],
+      [9.7476, 118.72581],
+      [9.74788, 118.73345],
+      [9.75263, 118.73513],
+      [9.75348, 118.73509],
+      [9.76007, 118.73011],
+      [9.76772, 118.73086],
+      [9.76879, 118.73212],
+      [9.76955, 118.73167],
+      [9.76514, 118.72983],
+      [9.76432, 118.72239],
+      [9.76881, 118.72156],
+      [9.77145, 118.71652],
+      [9.77655, 118.72082],
+      [9.7833, 118.71748],
+      [9.78283, 118.71943],
+      [9.7747, 118.71537],
+      [9.75955, 118.71111],
+      [9.74263, 118.71158],
+      [9.72902, 118.71612],
+      [9.71929, 118.72674],
+      [9.7157, 118.74197],
+      [9.72049, 118.76113]
     ],
     status: 'safe',
   },
@@ -120,10 +145,6 @@ export const SEED_ZONES: SeedZone[] = [
     description:
       'The shallow waters between the city and Honda Bay, off Sta. Lourdes and Manggahan — the route the bancas take out to the islands.',
     polygon: [
-      // Landward edge follows the Sta. Lourdes/Tagburos mainland shore
-      // from the fishing pier at (9.8431, 118.7438) south to
-      // (9.7928, 118.7746); seaward side ~1 km of shallow corridor
-      // between that shore and the banca route to the Honda Bay islands.
       [9.84306, 118.74375],
       [9.84183, 118.74194],
       [9.83825, 118.74369],
@@ -135,12 +156,17 @@ export const SEED_ZONES: SeedZone[] = [
       [9.80632, 118.77174],
       [9.79739, 118.77534],
       [9.79276, 118.77461],
-      [9.795, 118.779],
-      [9.806, 118.786],
-      [9.819, 118.788],
-      [9.828, 118.78],
-      [9.8335, 118.759],
-      [9.8375, 118.748],
+      [9.7922, 118.77816],
+      [9.79781, 118.77905],
+      [9.80815, 118.77488],
+      [9.81881, 118.76641],
+      [9.81933, 118.75882],
+      [9.82077, 118.7585],
+      [9.82745, 118.76131],
+      [9.84129, 118.74839],
+      [9.84158, 118.74607],
+      [9.84061, 118.74654],
+      [9.84306, 118.74735000000001]
     ],
     status: 'safe',
   },
@@ -150,29 +176,19 @@ export const SEED_ZONES: SeedZone[] = [
     description:
       'The inner island cluster: Cowrie, Luli, Snake and Pambato Reef. Heaviest island-hopping and gleaning traffic in the city.',
     polygon: [
-      // Starts at the Sta. Lourdes pier (9.8431, 118.7438), follows the
-      // mainland shore N to (9.8633, 118.7446), then wraps the inner
-      // island cluster in shallows: Cañon (9.8522, 118.7617), Cowrie
-      // (9.8383, 118.7721), Bonita (9.8759, 118.7637), Luli
-      // (9.8726, 118.7685), Snake (9.8746, 118.7745). Meara Island stays
-      // out to the NE; the NE notch is shared with honda-outer.
       [9.84306, 118.74375],
       [9.84379, 118.74609],
       [9.84403, 118.74191],
       [9.84897, 118.74456],
       [9.85917, 118.7458],
       [9.86333, 118.74459],
-      [9.87, 118.7545],
-      [9.884, 118.7585],
-      [9.884, 118.7748],
-      [9.877, 118.7728],
-      [9.87, 118.7755],
-      [9.865, 118.79],
-      [9.852, 118.794],
-      [9.843, 118.787],
-      [9.8345, 118.775],
-      [9.8335, 118.759],
-      [9.8375, 118.748],
+      [9.877, 118.756],
+      [9.88, 118.775],
+      [9.87, 118.778],
+      [9.86, 118.78],
+      [9.85, 118.785],
+      [9.836, 118.776],
+      [9.84306, 118.74735000000001]
     ],
     status: 'safe',
   },
@@ -182,13 +198,6 @@ export const SEED_ZONES: SeedZone[] = [
     description:
       'The outer reaches toward Pandan, Batasa and Starfish Island, where the bay opens onto the Sulu Sea.',
     polygon: [
-      // Covers the main body of Honda Bay: mainland shore from the
-      // peninsula NE corner (9.8966, 118.7423) around the mouth — the
-      // edge follows the mapped shoreline of the north peninsula
-      // (out to 9.9449 N at the Tapul point, lagoon excluded) east to
-      // (9.9400, 118.8206). Includes Meara, Starfish, Makesi/Pandan,
-      // Kalungpang, Parunponon and the Bush/Tapul shallows; the SW edge
-      // is shared with honda-inner so Fondeado Island stays out.
       [9.89664, 118.74229],
       [9.91104, 118.74567],
       [9.92111, 118.75133],
@@ -207,24 +216,15 @@ export const SEED_ZONES: SeedZone[] = [
       [9.94304, 118.79548],
       [9.93494, 118.80256],
       [9.94004, 118.82065],
-      [9.9336, 118.8284],
-      [9.93, 118.84],
-      [9.934, 118.85],
-      [9.9365, 118.861],
-      [9.934, 118.872],
-      [9.925, 118.879],
-      [9.908, 118.882],
-      [9.899, 118.88],
-      [9.888, 118.874],
-      [9.877, 118.86],
-      [9.866, 118.835],
-      [9.864, 118.81],
-      [9.865, 118.79],
-      [9.87, 118.7755],
-      [9.877, 118.7728],
-      [9.884, 118.7748],
-      [9.884, 118.7585],
-      [9.87, 118.7545],
+      [9.938039999999999, 118.82425],
+      [9.925, 118.845],
+      [9.915, 118.845],
+      [9.905, 118.835],
+      [9.89, 118.82],
+      [9.87, 118.82],
+      [9.87, 118.79],
+      [9.88, 118.775],
+      [9.877, 118.756]
     ],
     status: 'safe',
   },
@@ -234,10 +234,6 @@ export const SEED_ZONES: SeedZone[] = [
     description:
       'Northeast coast past Honda Bay toward Binuatan — mangrove-lined shore and small-scale gleaning grounds.',
     polygon: [
-      // A ~1 km strip hugging the mapped mangrove coastline NE of Honda
-      // Bay: from (9.9400, 118.8206) past Marayugon to (9.9748,
-      // 118.8999). Follows OSM way 62049965 exactly on its landward
-      // side; Fondeado Island (9.93 N) is deliberately outside.
       [9.94004, 118.82065],
       [9.96374, 118.84313],
       [9.97417, 118.85745],
@@ -245,14 +241,13 @@ export const SEED_ZONES: SeedZone[] = [
       [9.97894, 118.89463],
       [9.97476, 118.89987],
       [9.9684, 118.9074],
-      [9.9739, 118.8969],
-      [9.9732, 118.8821],
-      [9.9704, 118.872],
-      [9.9654, 118.8607],
-      [9.9587, 118.8523],
-      [9.9514, 118.8459],
-      [9.9451, 118.8398],
-      [9.9336, 118.8284],
+      [9.96565, 118.90508],
+      [9.97198, 118.89759],
+      [9.97556, 118.89309],
+      [9.97748, 118.88254],
+      [9.97088, 118.85905],
+      [9.96103, 118.84551],
+      [9.938039999999999, 118.82425]
     ],
     status: 'safe',
   },
@@ -262,12 +257,6 @@ export const SEED_ZONES: SeedZone[] = [
     description:
       'The north coast at Sabang, by the Underground River. Tourist boats and local gleaning share these waters.',
     polygon: [
-      // St. Paul Bay water off Sabang: the southern boundary traces the
-      // actual shoreline — Sabang beach past the Underground River boat
-      // terminal (10.1974, 118.8931), around the estuary mouth
-      // (10.1963, 118.8963) and up the bayhead to (10.2076, 118.9381).
-      // Open bay to ~10.25 N includes Saint Paul Rock (10.2500,
-      // 118.9167).
       [10.20989, 118.86769],
       [10.20895, 118.88045],
       [10.20261, 118.88893],
@@ -280,13 +269,18 @@ export const SEED_ZONES: SeedZone[] = [
       [10.2044, 118.9242],
       [10.2012, 118.9241],
       [10.20759, 118.93813],
-      [10.222, 118.943],
-      [10.243, 118.938],
-      [10.253, 118.923],
-      [10.247, 118.903],
-      [10.24, 118.883],
-      [10.228, 118.864],
-      [10.216, 118.86],
+      [10.21086, 118.93664],
+      [10.20687, 118.92788],
+      [10.21221, 118.92804],
+      [10.20408, 118.91814],
+      [10.20627, 118.90787],
+      [10.20185, 118.90556],
+      [10.20195, 118.90137],
+      [10.19998, 118.8959],
+      [10.20003, 118.89545],
+      [10.20519, 118.89148],
+      [10.21246, 118.88176],
+      [10.21348, 118.86795]
     ],
     status: 'safe',
   },
