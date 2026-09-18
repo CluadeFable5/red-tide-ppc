@@ -303,16 +303,17 @@ Notes:
 
 ## 10. Zone boundaries
 
-The polygons in `src/data/zones.ts` are **hand-drawn approximations, traced against the real coastline** — not survey boundaries and not official BFAR fisheries areas. Each zone's shape follows the shoreline stretch its name and description describe (mangrove edge, bay shallows, island cluster, port frontage, and so on), so the polygon actually overlaps the water people fish, glean, or gather shellfish in, rather than floating out in open sea disconnected from land.
+The polygons in `src/data/zones.ts` are **hand-drawn approximations, traced against the real coastline** — not survey boundaries and not official BFAR fisheries areas. Each zone is a single simple polygon of 12 vertices: a **nearshore band** whose landward edge sits on mapped OpenStreetMap coastline nodes and whose seaward edge runs 300–400 m out, perpendicular to the shore. Each zone therefore covers the shallow water people actually fish, glean and gather shellfish in — reef flat, mangrove edge, port frontage — instead of floating out in open sea disconnected from land.
 
-Reference points used to anchor the shapes: the Bancao-Bancao lighthouse, the Santa Lourdes wharf, Cowrie/Cañon/Luli and the other Honda Bay islands, Sabang village, and Saint Paul Rock.
+Reference points the shapes were drawn against: the Bancao-Bancao lighthouse and Pristine Beach, the city quay, the Santa Lourdes wharf, the Tagburos mangrove inlet, the Honda Bay creek mouth, the Marayugon headland, Sabang village and its boat terminal, and Saint Paul Rock for orientation.
 
-Two caveats worth knowing:
+Three caveats worth knowing:
 
-- The outlines are simplified to a handful of vertices each, so a zone edge can cut across a mangrove islet or a small headland. They mark an area, not a precise boundary line.
+- The outlines are simplified to six shore corners each, so a zone edge can cut across a small headland or bridge a cove rather than follow it in (the cove east of Sabang village is bridged). They mark an area, not a precise boundary line.
+- Because the bands hug the shore, the Honda Bay islands — Cowrie, Cañon, Luli, Starfish and the rest — fall **outside** them, in open bay water. A report about an island trip belongs to the zone the boat left from.
 - `binuatan` is a legacy id: there is no coastal place called Binuatan (the only Binuatan in the Philippines is a weaving centre in Barangay Santa Monica, inside the city). That polygon covers the real northeast-coast water off the Marayugon and Babuyan barangays.
 
-> **Provenance note:** an earlier revision of these polygons was placed by offset from the coastline (vertices deliberately kept clear of the mapped shore) rather than traced along it, which put the shapes out in open water instead of over the areas the app is meant to warn people about. If you're touching this file, verify visually that every zone's near-land edge actually sits against the shoreline — zoom the map into each zone individually and check for a gap of open water between the polygon and the coast before committing.
+> **Provenance note:** an earlier revision of these polygons was placed by offset from the coastline (vertices deliberately kept clear of the mapped shore) rather than traced along it, which put the shapes out in open water instead of over the areas the app is meant to warn people about. The current bands are offset too, but only their *seaward* edge is — every landward vertex is a mapped coastline node. If you're touching this file, verify visually that every zone's near-land edge actually sits against the shoreline — zoom the map into each zone individually and check for a gap of open water between the polygon and the coast before committing.
 
 Before this is used for real public-health decisions, replace them with the actual boundaries from BFAR or the Puerto Princesa City LGU.
 
