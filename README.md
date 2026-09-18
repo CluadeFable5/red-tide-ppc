@@ -55,7 +55,7 @@ Red Tide PPC gives those sightings somewhere to go, and gives a local reviewer a
 
 **Core loop**
 
-1. **Public map at `/map`** — a Leaflet map of the Puerto Princesa coastline. Each zone is a coloured polygon traced against the actual shoreline:
+1. **Public map at `/map`** — a Leaflet map of the Puerto Princesa coastline. Each zone is a coloured nearshore band hugging the actual shoreline (see §10):
    - 🟢 **Safe** — no advisory recorded.
    - 🟡 **Unconfirmed** — flagged by an admin as needing a check; treat with caution.
    - 🔴 **Advisory** — confirmed; do not eat shellfish from this zone.
@@ -303,21 +303,35 @@ Notes:
 
 ## 10. Zone boundaries
 
-The polygons in `src/data/zones.ts` are **hand-drawn approximations, traced against the real coastline** — not survey boundaries and not official BFAR fisheries areas. Each zone is a single simple polygon of 12 vertices: a **nearshore band** whose landward edge sits on mapped OpenStreetMap coastline nodes and whose seaward edge runs 300–400 m out, perpendicular to the shore. Each zone therefore covers the shallow water people actually fish, glean and gather shellfish in — reef flat, mangrove edge, port frontage — instead of floating out in open sea disconnected from land.
+The polygons in `src/data/zones.ts` are **hand-drawn approximations, traced against the real coastline** — not survey boundaries and not official BFAR fisheries areas.
 
-Reference points the shapes were drawn against: the Bancao-Bancao lighthouse and Pristine Beach, the city quay, the Santa Lourdes wharf, the Tagburos mangrove inlet, the Honda Bay creek mouth, the Marayugon headland, Sabang village and its boat terminal, and Saint Paul Rock for orientation.
+Each zone is a **single simple polygon of 12 vertices**: a nearshore band whose **landward edge sits on mapped OpenStreetMap coastline nodes** and whose **seaward edge runs 300–400 m out**, perpendicular to the shore. Six shore corners are hand-picked from the 8–33 mapped nodes in each stretch, chosen so that no straight chord cuts more than ~165 m across land and none leaves more than ~430 m of nearshore water uncovered. The seaward edge is that same run offset in a local metric frame, miter-joined at each corner and capped at 1.35× the band width, so sharp bends — the port basin corner, the Honda Bay creek mouth — cannot spike out to sea.
 
-Three caveats worth knowing:
+| id | What the band covers | Band | Area |
+| --- | --- | --- | --- |
+| `pp-bay` | Bancao-Bancao shore → Pristine Beach → port basin → city quay → San Jose waterfront | 400 m | 2.9 km² |
+| `sta-lourdes` | Peninsula east coast: Blue Palawan shore → Tagburos mangrove inlet → Sta. Lourdes wharf | 350 m | 3.2 km² |
+| `honda-inner` | Honda Bay west shore, from the wharf north to 9.894 N | 350 m | 2.2 km² |
+| `honda-outer` | Mangrove shore and tidal channel north to the creek mouth (9.9307, 118.7536) | 350 m | 1.5 km² |
+| `binuatan` | Northeast coast: Honda Bay mouth → off Marayugon → around the 9.9812 headland → toward Babuyan | 400 m | 4.7 km² |
+| `sabang` | St. Paul Bay: NW end of the shore → Sabang village and boat terminal → east along the bay | 350 m | 2.9 km² |
+
+Adjacent zones **tile** rather than overlap: `sta-lourdes`/`honda-inner` share the Sta. Lourdes wharf cap (`[9.8431, 118.7438]` + `[9.84224, 118.74802]`), and `honda-inner`/`honda-outer` share `[9.894, 118.7457]` + `[9.89526, 118.74901]`. If you re-shape either zone of a pair, keep those vertices byte-identical in both or the overlap test fails.
+
+Coastline sources are the OSM API and Overpass (retrieved 2026-09-17/18); the way ids behind each edge are listed in the header of `zones.ts`. Reference points the shapes were drawn against: the Bancao-Bancao lighthouse and Pristine Beach, the city quay, the Santa Lourdes wharf, the Tagburos mangrove inlet, the Honda Bay creek mouth, the Marayugon headland, Sabang village and its boat terminal, and Saint Paul Rock for orientation.
+
+Four caveats worth knowing:
 
 - The outlines are simplified to six shore corners each, so a zone edge can cut across a small headland or bridge a cove rather than follow it in (the cove east of Sabang village is bridged). They mark an area, not a precise boundary line.
 - Because the bands hug the shore, the Honda Bay islands — Cowrie, Cañon, Luli, Starfish and the rest — fall **outside** them, in open bay water. A report about an island trip belongs to the zone the boat left from.
+- The mangrove creek complex at the head of Honda Bay (way `1530271757`) is deliberately **not** traced: it doubles back on itself through the mangroves, and following it is what produced the earlier jagged, self-intersecting polygons. The `honda-outer` band stops at its mouth.
 - `binuatan` is a legacy id: there is no coastal place called Binuatan (the only Binuatan in the Philippines is a weaving centre in Barangay Santa Monica, inside the city). That polygon covers the real northeast-coast water off the Marayugon and Babuyan barangays.
 
-> **Provenance note:** an earlier revision of these polygons was placed by offset from the coastline (vertices deliberately kept clear of the mapped shore) rather than traced along it, which put the shapes out in open water instead of over the areas the app is meant to warn people about. The current bands are offset too, but only their *seaward* edge is — every landward vertex is a mapped coastline node. If you're touching this file, verify visually that every zone's near-land edge actually sits against the shoreline — zoom the map into each zone individually and check for a gap of open water between the polygon and the coast before committing.
+> **Provenance note:** these polygons have been redrawn twice, and both times by over-correcting. An early revision placed them by offset from the coastline with the vertices deliberately kept clear of the mapped shore, which put the shapes out in open water instead of over the areas the app is meant to warn people about. The fix for that pasted raw coastline traces straight into the polygons — including the mangrove creek way above, which crosses back over itself — leaving every zone jagged, self-intersecting and in places only a few metres wide. The current bands are offset too, but only their *seaward* edge is: every landward vertex is a mapped coastline node. If you're touching this file, verify visually that every zone's near-land edge actually sits against the shoreline — zoom the map into each zone individually and check for a gap of open water between the polygon and the coast before committing.
 
 Before this is used for real public-health decisions, replace them with the actual boundaries from BFAR or the Puerto Princesa City LGU.
 
-**If you edit the polygons:** zones are seeded into Firestore, so an existing project keeps the old coordinates until you re-seed — `npm run seed -- --force`.
+**If you edit the polygons:** zones are seeded into Firestore, so an existing project keeps the old coordinates until you re-seed — `npm run seed -- --force`. In demo mode, clear `localStorage` (`red-tide-ppc:demo:v1`) to re-seed from the file.
 
 ---
 
@@ -359,7 +373,7 @@ A growing suite across the following areas (see `docs/` for the browser-verifica
 - **`src/motion/sheetAnchors.test.ts`** — the sheet's snap arithmetic: offsets, clamping, velocity projection, flick gating, underlay mapping, and header-chrome fade timing (threshold, easing curve, reduced-motion instant swap).
 - **`src/lib/firebase.test.ts`** — `readFirebaseConfig` returns a config only when all five keys are real, so a half-filled `.env` falls back to demo mode instead of half-initialising Firebase.
 - **`src/motion/readouts.test.ts`** — the data-derived copy: peek summary, anchor readout, dominant status, advisory share.
-- **`src/data/zones.test.ts`** — polygon sanity: unique ids, plausible coordinates inside the Puerto Princesa box, the two Honda Bay zones do not overlap, bounding box contains every vertex, and every zone's near-land edge actually sits against the coastline (no open-water gap).
+- **`src/data/zones.test.ts`** — polygon sanity: 4–6 zones all starting `safe`; unique ids plus non-trivial names and descriptions; at least 3 plausible vertices each, all inside the Puerto Princesa box; raw `[lat, lng]` tuples still contain nested arrays (exactly why `scripts/seed.ts` must serialize them) and survive a Firestore round-trip intact; **no two zones overlap** — no interior edge crossings and no vertex of one strictly inside another, while shared boundary vertices and edges are allowed so neighbours can tile; every zone anchored within ~250 m of a real OpenStreetMap coastline node (the guard against zones floating in open water); and `zonesBoundingBox` contains every vertex and `MAP_CENTER`.
 - **`src/lib/backend.firebase.test.ts`** — Cloudinary uploads use the correct endpoint and form fields, return `secure_url`, and surface configuration/API errors.
 - **`src/lib/firestoreSeedValidation.test.ts`** — seed payloads pass the shape Firestore actually rejects on.
 
@@ -385,6 +399,7 @@ Additional one-off verification scripts (bottom sheet snap points, header fade t
 | I want to… | Touch this |
 | --- | --- |
 | **Add or edit a zone** | `src/data/zones.ts` → then `npm run seed -- --force` to push it. In demo mode, clear `localStorage` to re-seed. Verify the new polygon actually touches the coastline (see §10) before shipping. |
+| **Re-shape a zone polygon** | Same file. Keep it one simple polygon of ~6–12 vertices: landward vertices on real coastline nodes, seaward edge offset 300–400 m perpendicular (§10 has the recipe and the shared-cap rule). `name` values are asserted verbatim by `src/App.test.tsx`, so change them there too; `description` is free text. Run `npm test` afterwards — `zones.test.ts` catches self-intersections, overlaps and zones that have drifted off the shore. |
 | **Replace the polygons with real boundaries** | Same file. `polygon` accepts `[lat, lng]` pairs; the mapper also tolerates `{latitude, longitude}` GeoPoints entered in the console. |
 | **Change a status colour** | `src/lib/status.ts` (`hex` is what Leaflet draws) **and** the `@theme` block in `src/index.css` — they are duplicated on purpose and must be kept in sync. |
 | **Change the advisory wording** | `guidance` in `src/lib/status.ts`; the long explainer is in `src/pages/MapPage.tsx`. |
