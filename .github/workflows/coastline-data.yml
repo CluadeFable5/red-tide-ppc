@@ -1,0 +1,44 @@
+name: Coastline data (temporary)
+
+# TEMPORARY workflow (Arena session, 2026-09-18).
+#
+# The coding sandbox cannot reach the Overpass API, so this one-shot job pulls
+# the real OSM coastline for the Puerto Princesa area on a GitHub runner and
+# uploads it as an artifact for local re-plotting of the advisory zones.
+# It writes nothing to the repository. Delete with
+# `scripts/fetch-coastline.mjs` when the polygons are done.
+
+on:
+  push:
+    paths:
+      - '.github/workflows/coastline-data.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    name: Fetch OSM coastline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      # No npm install needed: the script uses the Node 22 global fetch.
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Fetch coastline
+        run: node scripts/fetch-coastline.mjs
+
+      - name: Upload coastline data
+        uses: actions/upload-artifact@v7
+        with:
+          name: ppc-coastline
+          path: .cache/coastline
+          retention-days: 3
+          if-no-files-found: error
