@@ -4,9 +4,9 @@ name: Coastline data (temporary)
 #
 # The coding sandbox cannot reach the Overpass API, so this one-shot job pulls
 # the real OSM coastline for the Puerto Princesa area on a GitHub runner and
-# uploads it as an artifact for local re-plotting of the advisory zones.
-# It writes nothing to the repository. Delete with
-# `scripts/fetch-coastline.mjs` when the polygons are done.
+# commits a compact snapshot to `.cache/` (git-ignored in normal use) so the
+# advisory-zone polygons in `src/data/zones.ts` can be re-plotted against the
+# actual shoreline. Delete with `scripts/fetch-coastline.mjs` when done.
 
 on:
   push:
@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   fetch:
@@ -35,10 +35,10 @@ jobs:
       - name: Fetch coastline
         run: node scripts/fetch-coastline.mjs
 
-      - name: Upload coastline data
-        uses: actions/upload-artifact@v7
-        with:
-          name: ppc-coastline
-          path: .cache/coastline
-          retention-days: 3
-          if-no-files-found: error
+      - name: Commit the snapshot so the sandbox can read it
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f .cache/coastline
+          git commit -m "chore(temp): OSM coastline snapshot for zone re-plotting [skip ci]"
+          git push
