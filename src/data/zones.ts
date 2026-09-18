@@ -6,17 +6,50 @@ import type { LatLng, ZoneStatus } from '../types'
  * These are hand-drawn, APPROXIMATE coastal areas — good enough to tell a
  * fisherman "this is your bay", not a survey boundary.
  *
- * The polygons were re-plotted (2026-09-17) against real OpenStreetMap
- * coastlines (Overpass API / Nominatim) so each zone HUGS the shore instead
- * of floating offshore: every landward vertex snaps to a mapped shoreline
- * node (ways 4247188, 1044151902/1044151904, 1201581683/1201581684/
- * 1201582689, 62049956, 1530225665/1530225667/1530236375/1530236381/
- * 1530236382/62050018, 1530271755/1530271757, 1530291468/1530291469/
- * 1530291480/1530291482, 62049964/62049965, 61557844, 700043259,
- * 1314598379, 62049996 and neighbours), and
- * the seaward limit is a plain straight cut 1–2.5 km of open water offshore.
- * Adjacent zones share boundary vertices so they tile without overlapping.
- * Reference anchors (islands included in exactly one zone each):
+ * HOW THE SHAPES ARE BUILT (re-plotted 2026-09-18)
+ * ------------------------------------------------
+ * Every zone is ONE simple polygon of exactly 12 vertices: a nearshore band.
+ *
+ *   - the LANDWARD edge is a run of real OpenStreetMap coastline nodes,
+ *     simplified by hand to 6 corners (8-33 mapped nodes per zone were
+ *     reduced; corners were chosen so no straight chord cuts more than
+ *     ~165 m across land, and none leaves more than ~430 m of nearshore
+ *     water uncovered);
+ *   - the SEAWARD edge is that same run offset 300-400 m perpendicular into
+ *     the water, miter-joined at each corner and capped at 1.35x the band
+ *     width so sharp bends (the port basin corner, the creek mouth) cannot
+ *     spike out to sea.
+ *
+ * So each zone is a contiguous ribbon of shallow water 1.4-4.7 km2 in area,
+ * following the contour of its bay or inlet — never a raw coastline trace,
+ * never a sliver, never self-intersecting. Because the bands are that narrow,
+ * the Honda Bay islands (Cowrie, Luli, Starfish and the rest) now sit OUTSIDE
+ * them, in open bay water: these zones mark the shore, reef flat and mangrove
+ * edge people actually glean from, not the whole island-hopping area.
+ *
+ * Adjacent zones share their boundary vertices exactly, so they tile edge to
+ * edge without overlapping:
+ *
+ *   sta-lourdes | honda-inner   share [9.8431, 118.7438] + [9.84224, 118.74802]
+ *                               (the Sta. Lourdes wharf)
+ *   honda-inner | honda-outer   share [9.894, 118.7457] + [9.89526, 118.74901]
+ *
+ * Shoreline sources (retrieved 2026-09-17/18 from the OSM API and Overpass):
+ *
+ *   pp-bay        1201582689, 1201581683, 1201581684 (Bancao-Bancao shore),
+ *                 4247188 + node 1044151904 (port basin and city waterfront)
+ *   sta-lourdes   62049956 (peninsula east coast, Blue Palawan -> wharf)
+ *   honda-inner   1530225665, 1530225667, 1530236382 (bay west shore)
+ *   honda-outer   62050018 (mangrove shore to the creek mouth); the creek
+ *                 complex 1530271757/1530271755 is deliberately NOT traced —
+ *                 it doubles back on itself through the mangroves and the
+ *                 band stops at its mouth
+ *   binuatan      1530291482 and neighbours (Honda Bay north shore),
+ *                 62049965 (northeast coast to Babuyan)
+ *   sabang        61557844 (St. Paul Bay shore), 62049996 (headland east of
+ *                 Sabang village)
+ *
+ * Reference points the shapes were drawn against:
  *
  *   LAND / SHORELINE
  *   Puerto Princesa city centre          9.7399 N, 118.7438 E
@@ -33,24 +66,25 @@ import type { LatLng, ZoneStatus } from '../types'
  *   Sabang village (Sitio Sabang)       10.1962 N, 118.8929 E
  *   Sabang boat terminal (Underg. River)10.1974 N, 118.8931 E
  *
- *   WATER / ISLANDS
+ *   WATER / ISLANDS (orientation only — outside the nearshore bands)
  *   Honda Bay (OSM natural=bay node)     9.8904 N, 118.8088 E
- *   Cowrie Island                        9.8383 N, 118.7721 E   (honda-inner)
- *   Cañon Island                         9.8522 N, 118.7617 E   (honda-inner)
- *   Luli Island                          9.8726 N, 118.7685 E   (honda-inner)
- *   Bonita Island                        9.8759 N, 118.7637 E   (honda-inner)
- *   Makesi Island (loc. Isla Pandan)     9.8756 N, 118.8154 E   (honda-outer)
- *   Meara Island                         9.8839 N, 118.7855 E   (honda-outer)
- *   Starfish Island                      9.9021 N, 118.7971 E   (honda-outer)
- *   Kalungpang Island                    9.9057 N, 118.8308 E   (honda-outer)
- *   Parunponon Island                    9.9214 N, 118.8418 E   (honda-outer)
- *   Fondeado Island                      9.9337 N, 118.9238 E   (outside all)
- *   Saint Paul Rock (St. Paul Bay)      10.2500 N, 118.9167 E   (sabang)
+ *   Cowrie Island                        9.8383 N, 118.7721 E
+ *   Cañon Island                         9.8522 N, 118.7617 E
+ *   Luli Island                          9.8726 N, 118.7685 E
+ *   Bonita Island                        9.8759 N, 118.7637 E
+ *   Makesi Island (loc. Isla Pandan)     9.8756 N, 118.8154 E
+ *   Meara Island                         9.8839 N, 118.7855 E
+ *   Starfish Island                      9.9021 N, 118.7971 E
+ *   Kalungpang Island                    9.9057 N, 118.8308 E
+ *   Parunponon Island                    9.9214 N, 118.8418 E
+ *   Fondeado Island                      9.9337 N, 118.9238 E
+ *   Saint Paul Rock (St. Paul Bay)      10.2500 N, 118.9167 E
  *
  * Note on names: there is no coastal place called "Binuatan" — the only
  * Binuatan in the Philippines is a weaving centre in Barangay Santa Monica,
  * inside the city. The `binuatan` id is kept for continuity, but the polygon
- * is the real northeast-coast water off Marayugon/Babuyan.
+ * is the real northeast-coast water off Marayugon/Babuyan. Zone `name` values
+ * are asserted verbatim by `src/App.test.tsx`, so change them there too.
  *
  * Replace the polygons with real BFAR/LGU fisheries boundaries before this is
  * used to make actual public-health decisions.
@@ -73,69 +107,27 @@ export const SEED_ZONES: SeedZone[] = [
     name: 'Puerto Princesa Bay (City Proper)',
     description:
       'The city bay southwest of the poblacion — Bancao-Bancao, San Jose and the port side. Where most city market shellfish is landed.',
+    /**
+     * 12 vertices, 400 m band. Landward edge: Bancao-Bancao shore by the PCG
+     * lighthouse -> Pristine/White Beach -> the port basin's southwest corner
+     * -> the city quay -> San Jose waterfront. Water lies west/southwest, so
+     * the band is offset to the left of the shore as it runs northwest then
+     * north. The port corner is the sharpest bend in the set; its miter is
+     * capped, which is why vertex J sits a little further out than 400 m.
+     */
     polygon: [
-      [9.717, 118.762],
-      [9.712, 118.742],
-      [9.716, 118.725],
-      [9.727, 118.713],
-      [9.742, 118.708],
-      [9.76, 118.7075],
-      [9.776, 118.712],
-      [9.787, 118.7175],
-      [9.7864, 118.71996],
-      [9.77603, 118.72509],
-      [9.77256, 118.72216],
-      [9.77119, 118.72478],
-      [9.76826, 118.72532],
-      [9.76848, 118.72733],
-      [9.77763, 118.73114],
-      [9.77431, 118.73307],
-      [9.77621, 118.73531],
-      [9.76112, 118.73383],
-      [9.75477, 118.73862],
-      [9.7521, 118.73876],
-      [9.74437, 118.73602],
-      [9.74415, 118.72989],
-      [9.73128, 118.73157],
-      [9.72774, 118.74371],
-      [9.72955, 118.74762],
-      [9.72746, 118.74985],
-      [9.7276, 118.75479],
-      [9.72408, 118.7583],
-      [9.72337, 118.76314],
-      [9.72184, 118.7622],
-      [9.72445, 118.76978],
-      [9.72105, 118.77095],
-      [9.71517, 118.75388],
-      [9.7206, 118.75722],
-      [9.72069, 118.7566],
-      [9.72396, 118.75334],
-      [9.72382, 118.74847],
-      [9.72527, 118.74693],
-      [9.72391, 118.744],
-      [9.72848, 118.72831],
-      [9.7476, 118.72581],
-      [9.74788, 118.73345],
-      [9.75263, 118.73513],
-      [9.75348, 118.73509],
-      [9.76007, 118.73011],
-      [9.76772, 118.73086],
-      [9.76879, 118.73212],
-      [9.76955, 118.73167],
-      [9.76514, 118.72983],
-      [9.76432, 118.72239],
-      [9.76881, 118.72156],
-      [9.77145, 118.71652],
-      [9.77655, 118.72082],
-      [9.7833, 118.71748],
-      [9.78283, 118.71943],
-      [9.7747, 118.71537],
-      [9.75955, 118.71111],
-      [9.74263, 118.71158],
-      [9.72902, 118.71612],
-      [9.71929, 118.72674],
-      [9.7157, 118.74197],
-      [9.72049, 118.76113]
+      [9.7231, 118.766], // Bancao-Bancao shore (S end)
+      [9.7269, 118.753], // Pristine/White Beach
+      [9.7397, 118.7281], // port basin, southwest corner
+      [9.7444, 118.736], // city quay — shore fixture
+      [9.7553, 118.738], // San Jose waterfront
+      [9.7611, 118.7338], // N end of the city waterfront
+      [9.7607, 118.72962], // --- seaward edge, back south ---
+      [9.75442, 118.73414],
+      [9.74667, 118.73272],
+      [9.73976, 118.72318],
+      [9.72354, 118.75165],
+      [9.71955, 118.76529],
     ],
     status: 'safe',
   },
@@ -144,29 +136,26 @@ export const SEED_ZONES: SeedZone[] = [
     name: 'Sta. Lourdes Coastal Waters',
     description:
       'The shallow waters between the city and Honda Bay, off Sta. Lourdes and Manggahan — the route the bancas take out to the islands.',
+    /**
+     * 12 vertices, 350 m band. Landward edge: the peninsula's east coast from
+     * where way 4590522 ends (9.7689) north through the Blue Palawan shore,
+     * the Tagburos mangrove inlet and on to the Sta. Lourdes wharf. Water
+     * (Honda Bay) lies east, so the band is offset to the right of the shore.
+     * The wharf tip is shared with honda-inner: the two zones tile from there.
+     */
     polygon: [
-      [9.84306, 118.74375],
-      [9.84183, 118.74194],
-      [9.83825, 118.74369],
-      [9.83788, 118.74665],
-      [9.8267, 118.75709],
-      [9.82111, 118.75474],
-      [9.81593, 118.75589],
-      [9.81533, 118.76458],
-      [9.80632, 118.77174],
-      [9.79739, 118.77534],
-      [9.79276, 118.77461],
-      [9.7922, 118.77816],
-      [9.79781, 118.77905],
-      [9.80815, 118.77488],
-      [9.81881, 118.76641],
-      [9.81933, 118.75882],
-      [9.82077, 118.7585],
-      [9.82745, 118.76131],
-      [9.84129, 118.74839],
-      [9.84158, 118.74607],
-      [9.84061, 118.74654],
-      [9.84306, 118.74735000000001]
+      [9.7689, 118.7731], // S end, junction with the peninsula east coast
+      [9.7946, 118.7753],
+      [9.8139, 118.7659],
+      [9.8199, 118.7547], // Tagburos mangrove inlet
+      [9.8255, 118.7574],
+      [9.8431, 118.7438], // Sta. Lourdes wharf — shared with honda-inner
+      [9.84224, 118.74802], // --- seaward edge, back south ---
+      [9.82594, 118.76115],
+      [9.81963, 118.75811],
+      [9.81676, 118.76774],
+      [9.79444, 118.77862],
+      [9.76825, 118.77622],
     ],
     status: 'safe',
   },
@@ -174,21 +163,26 @@ export const SEED_ZONES: SeedZone[] = [
     id: 'honda-inner',
     name: 'Honda Bay — Inner Islands',
     description:
-      'The inner island cluster: Cowrie, Luli, Snake and Pambato Reef. Heaviest island-hopping and gleaning traffic in the city.',
+      'Inner Honda Bay along the mainland shore north of the Sta. Lourdes wharf — the shallow reef flat the bancas cross to Cowrie, Luli and Snake Island, and the closest gleaning water to the city.',
+    /**
+     * 12 vertices, 350 m band. Landward edge: the bay's west shore from the
+     * Sta. Lourdes wharf north to 9.894 — the straightest stretch of coastline
+     * in the set (mapped nodes sit within ~20 m of these chords). Water lies
+     * east. Shares both of its end caps with its neighbours.
+     */
     polygon: [
-      [9.84306, 118.74375],
-      [9.84379, 118.74609],
-      [9.84403, 118.74191],
-      [9.84897, 118.74456],
-      [9.85917, 118.7458],
-      [9.86333, 118.74459],
-      [9.877, 118.756],
-      [9.88, 118.775],
-      [9.87, 118.778],
-      [9.86, 118.78],
-      [9.85, 118.785],
-      [9.836, 118.776],
-      [9.84306, 118.74735000000001]
+      [9.8431, 118.7438], // Sta. Lourdes wharf — shared with sta-lourdes
+      [9.851, 118.7447], // shore fixture
+      [9.8584, 118.7459],
+      [9.8743, 118.7457],
+      [9.8833, 118.7486],
+      [9.894, 118.7457], // N end — shared with honda-outer
+      [9.89526, 118.74901], // --- seaward edge, back south ---
+      [9.88341, 118.7523],
+      [9.87376, 118.74885],
+      [9.85858, 118.74942],
+      [9.8511, 118.7479],
+      [9.84224, 118.74802],
     ],
     status: 'safe',
   },
@@ -196,35 +190,28 @@ export const SEED_ZONES: SeedZone[] = [
     id: 'honda-outer',
     name: 'Honda Bay — Outer Islands',
     description:
-      'The outer reaches toward Pandan, Batasa and Starfish Island, where the bay opens onto the Sulu Sea.',
+      'Outer Honda Bay: the mangrove shore and tidal channel north of the inner bay, where the water narrows toward the bay mouth before opening onto the Sulu Sea past Pandan and Starfish Island.',
+    /**
+     * 12 vertices, 350 m band — the narrowest water of the six, so the offset
+     * was checked node by node against the mangrove spit east of it (way
+     * 1530271757) and stays inside the channel. Landward edge: the mainland
+     * mangrove shore north from 9.894 to the creek mouth at 9.9307; the creek
+     * itself is not traced (it doubles back through the mangroves). Water lies
+     * east/southeast.
+     */
     polygon: [
-      [9.89664, 118.74229],
-      [9.91104, 118.74567],
-      [9.92111, 118.75133],
-      [9.92862, 118.75015],
-      [9.93034, 118.7543],
-      [9.93217, 118.75765],
-      [9.92402, 118.75889],
-      [9.91321, 118.76453],
-      [9.91404, 118.76597],
-      [9.92929, 118.76435],
-      [9.93123, 118.76615],
-      [9.92926, 118.76986],
-      [9.93074, 118.77288],
-      [9.93926, 118.77479],
-      [9.94486, 118.79137],
-      [9.94304, 118.79548],
-      [9.93494, 118.80256],
-      [9.94004, 118.82065],
-      [9.938039999999999, 118.82425],
-      [9.925, 118.845],
-      [9.915, 118.845],
-      [9.905, 118.835],
-      [9.89, 118.82],
-      [9.87, 118.82],
-      [9.87, 118.79],
-      [9.88, 118.775],
-      [9.877, 118.756]
+      [9.894, 118.7457], // S end — shared with honda-inner
+      [9.911, 118.7457],
+      [9.9172, 118.7495],
+      [9.9236, 118.7517],
+      [9.9286, 118.7501],
+      [9.9307, 118.7536], // creek mouth, 89 m from the shore fixture
+      [9.92799, 118.75525], // --- seaward edge, back south ---
+      [9.92718, 118.7539],
+      [9.92356, 118.75506],
+      [9.91585, 118.75241],
+      [9.90981, 118.7487],
+      [9.89526, 118.74901],
     ],
     status: 'safe',
   },
@@ -232,22 +219,27 @@ export const SEED_ZONES: SeedZone[] = [
     id: 'binuatan',
     name: 'Binuatan (Northeast Coast)',
     description:
-      'Northeast coast past Honda Bay toward Binuatan — mangrove-lined shore and small-scale gleaning grounds.',
+      'Northeast coast past the Honda Bay mouth — the mangrove-lined shore off Marayugon toward Babuyan, and its small-scale gleaning grounds.',
+    /**
+     * 12 vertices, 400 m band, the longest zone (~10 km of coast). Landward
+     * edge: from the Honda Bay mouth (9.9400) northeast along way 62049965
+     * past Marayugon, around the headland at 9.9812 and east toward Babuyan.
+     * Water (the Sulu Sea) lies south/southeast, i.e. to the right of the
+     * shore as it runs northeast then east.
+     */
     polygon: [
-      [9.94004, 118.82065],
-      [9.96374, 118.84313],
-      [9.97417, 118.85745],
-      [9.98117, 118.88237],
-      [9.97894, 118.89463],
-      [9.97476, 118.89987],
-      [9.9684, 118.9074],
-      [9.96565, 118.90508],
-      [9.97198, 118.89759],
-      [9.97556, 118.89309],
-      [9.97748, 118.88254],
-      [9.97088, 118.85905],
-      [9.96103, 118.84551],
-      [9.938039999999999, 118.82425]
+      [9.94, 118.8206], // Honda Bay mouth — shore fixture
+      [9.9505, 118.8316],
+      [9.9694, 118.8502], // off Marayugon
+      [9.9812, 118.8824], // headland
+      [9.9748, 118.9001], // small embayment
+      [9.9756, 118.9148], // E end, toward Babuyan
+      [9.97211, 118.91575], // --- seaward edge, back southwest ---
+      [9.9711, 118.89884],
+      [9.97756, 118.88255],
+      [9.96651, 118.8524],
+      [9.94782, 118.83406],
+      [9.93764, 118.82337],
     ],
     status: 'safe',
   },
@@ -256,31 +248,27 @@ export const SEED_ZONES: SeedZone[] = [
     name: 'Sabang — St. Paul Bay (North Coast)',
     description:
       'The north coast at Sabang, by the Underground River. Tourist boats and local gleaning share these waters.',
+    /**
+     * 12 vertices, 350 m band, L-shaped around the bay at Sabang village.
+     * Landward edge: southeast from the western end of the shore (10.2099) to
+     * Sabang village and the boat terminal, then east/northeast along St. Paul
+     * Bay to the headland east of the village. Water lies north, i.e. to the
+     * left of the shore as it runs southeast then northeast. The small cove at
+     * 10.2006/118.9273 is bridged by a straight chord rather than followed in.
+     */
     polygon: [
-      [10.20989, 118.86769],
-      [10.20895, 118.88045],
-      [10.20261, 118.88893],
-      [10.19665, 118.89351],
-      [10.1963, 118.89631],
-      [10.19834, 118.90196],
-      [10.1982, 118.90771],
-      [10.20218, 118.90979],
-      [10.2002, 118.91908],
-      [10.2044, 118.9242],
-      [10.2012, 118.9241],
-      [10.20759, 118.93813],
-      [10.21086, 118.93664],
-      [10.20687, 118.92788],
-      [10.21221, 118.92804],
-      [10.20408, 118.91814],
-      [10.20627, 118.90787],
-      [10.20185, 118.90556],
-      [10.20195, 118.90137],
-      [10.19998, 118.8959],
-      [10.20003, 118.89545],
-      [10.20519, 118.89148],
-      [10.21246, 118.88176],
-      [10.21348, 118.86795]
+      [10.2099, 118.8677], // W end of the Sabang shore — shore fixture
+      [10.2083, 118.8814],
+      [10.1966, 118.8935], // Sabang village / boat terminal
+      [10.1979, 118.9061],
+      [10.2034, 118.9229],
+      [10.2076, 118.9381], // E end
+      [10.21025, 118.93635], // --- seaward edge, back west ---
+      [10.20605, 118.92111],
+      [10.20097, 118.90515],
+      [10.19983, 118.89473],
+      [10.21132, 118.88285],
+      [10.21304, 118.86807],
     ],
     status: 'safe',
   },
