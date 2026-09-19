@@ -16,7 +16,9 @@
  * documented OSM ways (fetched from the main OSM API as a cross-check, WITH
  * tags), plus `islets` — tagged place=islet/island and natural=reef/shoal
  * features inside the bay window, so offshore blobs are confirmed real or
- * dismissed as rendering artifacts.
+ * dismissed as rendering artifacts — and `places`, the named place features
+ * (barangays, suburbs, villages...) in the same windows, so hand-traced
+ * reference views can be pinned to exact landmark coordinates.
  *
  *   node scripts/fetch-coastline.mjs [output.json]
  */
@@ -158,17 +160,22 @@ function fetchDocumentedWay(id) {
  * Best-effort: the documented-way tags above answer the same question for
  * the one known ring, so an islet-query failure warns but never fails CI.
  */
-const ISLET_WINDOW = REGIONS['pp-bay'] // [south, west, north, east]
+// [south, west, north, east] each: the bay window plus the apex-north sea
+// window, so islets/reefs AND named landmarks are swept everywhere a
+// hand-traced reference view could reach.
+const SWEEP_WINDOWS = [REGIONS['pp-bay'], REGIONS['apex-north']]
 
 function fetchIslets() {
-  const bb = ISLET_WINDOW.join(',')
-  const query =
-    `[out:json][timeout:60];(` +
-    `node["place"~"^(islet|island)$"](${bb});` +
-    `way["place"~"^(islet|island)$"](${bb});` +
-    `node["natural"~"^(reef|shoal|sand|bare_rock)$"](${bb});` +
-    `way["natural"~"^(reef|shoal)$"](${bb});` +
-    `);out body center;`
+  const clauses = SWEEP_WINDOWS.map((bb) => {
+    const b = bb.join(',')
+    return (
+      `node["place"~"^(islet|island)$"](${b});` +
+      `way["place"~"^(islet|island)$"](${b});` +
+      `node["natural"~"^(reef|shoal|sand|bare_rock)$"](${b});` +
+      `way["natural"~"^(reef|shoal)$"](${b});`
+    )
+  }).join('')
+  const query = `[out:json][timeout:60];(${clauses});out body center;`
   const encoded = 'data=' + encodeURIComponent(query)
   for (const endpoint of OVERPASS_ENDPOINTS) {
     try {
@@ -242,6 +249,13 @@ const main = async () => {
     console.log(`::warning::islet query threw: ${err.message}`)
   }
 
+  let places = []
+  try {
+    places = fetchPlaces()
+  } catch (err) {
+    console.log(`::warning::places query threw: ${err.message}`)
+  }
+
   if (!overpassOk && documented.length === 0) {
     // Surface through a check-run annotation: the sandbox cannot download run
     // logs, but it CAN read annotations via the check-runs API.
@@ -269,6 +283,7 @@ const main = async () => {
         regions: byRegion,
         documented,
         islets,
+        places,
       },
       null,
       1,
