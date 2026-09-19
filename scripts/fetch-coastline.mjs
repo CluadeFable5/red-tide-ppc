@@ -66,23 +66,34 @@ async function fetchJson(url, init, timeoutMs = 120_000) {
 }
 
 async function fetchOverpass() {
-  const query = `[out:json][timeout:180];${Object.values(REGIONS)
+  // ONE union block containing every bbox — separate `( ... )` blocks would
+  // discard all but the last set before `out`.
+  const body = Object.values(REGIONS)
     .map(bboxQuery)
-    .join('')}out geom;`
+    .join('')
+  const query = `[out:json][timeout:180];(${body});out geom;`
   let lastErr
   for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      console.log(`Trying Overpass endpoint ${endpoint} ...`)
-      const data = await fetchJson(endpoint, {
-        method: 'POST',
-        body: 'data=' + encodeURIComponent(query),
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      })
-      console.log(`OK: ${data.elements?.length ?? 0} elements`)
-      return data
-    } catch (err) {
-      console.log(`  failed: ${err.message}`)
-      lastErr = err
+    for (const method of ['POST', 'GET']) {
+      try {
+        console.log(`Trying Overpass ${method} ${endpoint} ...`)
+        const url =
+          method === 'GET' ? `${endpoint}?data=${encodeURIComponent(fixed)}` : endpoint
+        const data = await fetchJson(url, {
+          method,
+          ...(method === 'POST'
+            ? {
+                body: 'data=' + encodeURIComponent(query),
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              }
+            : {}),
+        })
+        console.log(`OK: ${data.elements?.length ?? 0} elements`)
+        return data
+      } catch (err) {
+        console.log(`  failed: ${err.message}`)
+        lastErr = err
+      }
     }
   }
   throw lastErr
@@ -106,24 +117,26 @@ async function fetchDocumentedWay(id) {
 }
 
 const main = async () => {
-  const overpass = await fetchOverpass()
-
-  const byRegion = {}
-  for (const [region, [s, w, n, e]] of Object.entries(REGIONS)) {
-    byRegion[region] = []
-  }
-  const seen = new Set()
-  for (const el of overpass.elements ?? []) {
-    if (el.type !== 'way' || !el.geometry) continue
-    if (seen.has(el.id)) continue
-    seen.add(el.id)
-    const coords = el.geometry.map((g) => [g.lat, g.lon])
-    for (const [region, [s, w, n, e]] of Object.entries(REGIONS)) {
-      // Assign a way to every region whose bbox contains any of its points.
-      if (coords.some(([lat, lng]) => lat >= s && lat <= n && lng >= w && lng <= e)) {
-        byRegion[region].push({ id: el.id, geometry: coords })
+  let byRegion = Object.fromEntries(Object.keys(REGIONS).map((k) => [k, []]))
+  let overpassOk = false
+  try {
+    const overpass = await fetchOverpass()
+    const seen = new Set()
+    for (const el of overpass.elements ?? []) {
+      if (el.type !== 'way' || !el.geometry) continue
+      if (seen.has(el.id)) continue
+      seen.add(el.id)
+      const coords = el.geometry.map((g) => [g.lat, g.lon])
+      for (const [region, [s, w, n, e]] of Object.entries(REGIONS)) {
+        // Assign a way to every region whose bbox contains any of its points.
+        if (coords.some(([lat, lng]) => lat >= s && lat <= n && lng >= w && lng <= e)) {
+          byRegion[region].push({ id: el.id, geometry: coords })
+        }
       }
     }
+    overpassOk = true
+  } catch (err) {
+    console.log(`Overpass sweep failed entirely: ${err.message}`)
   }
 
   let documented = []
@@ -134,6 +147,13 @@ const main = async () => {
     else docFails.push(`${DOCUMENTED_WAYS[i]}: ${r.reason?.message}`)
   })
   if (docFails.length) console.log('Documented-way fallback misses:', docFails.join('; '))
+
+  if (!overpassOk && documented.length === 0) {
+    // Surface through a check-run annotation: the sandbox cannot download run
+    // logs, but it CAN read annotations via the check-runs API.
+    console.log('::error::Coastline fetch failed: Overpass unreachable and OSM API returned no documented ways')
+    throw new Error('no coastline source succeeded')
+  }
 
   const summary = Object.fromEntries(
     Object.entries(byRegion).map(([k, v]) => [
@@ -147,7 +167,12 @@ const main = async () => {
   writeFileSync(
     OUT,
     JSON.stringify(
-      { fetchedAt: new Date().toISOString(), regions: byRegion, documented },
+      {
+        fetchedAt: new Date().toISOString(),
+        overpassOk,
+        regions: byRegion,
+        documented,
+      },
       null,
       1,
     ),
