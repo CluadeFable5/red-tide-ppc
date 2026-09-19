@@ -22,15 +22,20 @@
  * shows it continuing past the cove and the E-W run to the headland apex.
  *
  * Navigation robustness (learned the hard way against real tiles):
- * - the tile grid is read through a STABILITY GATE (two identical reads):
- *   freshly zoomed/panned views hold mixed tile sets while new tiles load,
- *   and a naive read drifts the frame kilometres off-target;
+ * - Leaflet moves panes by CSS first and reloads tile srcs after (debounced
+ *   + network-slow on CI): a read right after a move sees STALE srcs with
+ *   live rects — coherently wrong, so even 3-anchor consensus agrees on a
+ *   kilometres-off projection (measured: identical misframes across runs).
+ *   Every post-move read therefore goes through a FRESHNESS gate (wait for
+ *   the grid to DIFFER from pre-move, then stabilise on srcs AND rects);
  * - each zoom level is done as pan-target-to-centre FIRST (cheap at low z,
- *   capped 250 px drags so endpoints stay in-viewport) and only then ONE
+ *   capped 200 px drags so endpoints stay in-viewport) and only then ONE
  *   wheel tick AT THE CENTRE — centre-zooming pins the target no matter how
  *   many levels one tick jumps, immune to tick-size variance between builds;
- * - every framing ends in an ASSERT (right tile-z, target within 60 px of
- *   the centre) so a misframe fails loudly instead of committing lies.
+ * - CSS animations are killed (steady-state pixels identical) so panes stop
+ *   on a dime; every framing ends in a DOUBLE-READ assert (two consensus
+ *   projections 1.5 s apart must agree AND centre the target at the right
+ *   tile-z) so a misframe fails loudly instead of committing lies.
  *
  * Usage:
  *   BASE_URL=http://localhost:4173 PREFIX=after REQUIRE_TILES=1 \
@@ -126,22 +131,46 @@ async function tileGrid(page) {
 }
 
 /**
- * Stability gate: two identical grid reads 600 ms apart (same mode-z, same
- * tile count, same tile keys). Fresh views hold mixed tile generations while
- * new tiles arrive; navigating on a mid-transition grid drifts kilometres.
+ * Full grid signature: srcs AND rounded rects. Leaflet moves panes by CSS
+ * first and reloads tile srcs after (debounced + network-slow on CI), so a
+ * src-only signature reads "stable" on a stale grid for seconds — every
+ * anchor then agrees on a coherently-wrong projection (measured: identical
+ * kilometre-scale misframes across runs). Rects in the key force us to wait
+ * out animations; srcs in the key force us to wait out reloads.
  */
-async function stableGrid(page, tries = 14) {
-  const key = (g) => `${g[0]?.z}:${g.length}:` + g.map((t) => `${t.x}/${t.y}`).sort().join(',')
+function gridKey(g) {
+  return `${g[0]?.z}:${g.length}:` +
+    g.map((t) => `${t.x}/${t.y}@${Math.round(t.px)},${Math.round(t.py)}`).sort().join(',')
+}
+
+/** Two identical full-signature reads 700 ms apart. */
+async function stableGrid(page, tries = 16) {
   let prev = await tileGrid(page)
-  await sleep(600)
+  await sleep(700)
   for (let i = 0; i < tries; i++) {
     const cur = await tileGrid(page)
-    if (cur.length && key(cur) === key(prev)) return cur
+    if (cur.length && gridKey(cur) === gridKey(prev)) return cur
     prev = cur
-    await sleep(600)
+    await sleep(700)
   }
   if (!prev.length) throw new Error('tile grid vanished')
-  return prev // best effort after ~9 s; the framing assert guards us
+  return prev // best effort after ~12 s; consensus + assert guard us
+}
+
+/**
+ * Freshness gate after a move: FIRST wait for the grid to DIFFER from its
+ * pre-move signature (proves the reload/animation started — a same-view read
+ * right after a move is definitionally stale), THEN wait for stability.
+ * Small sub-tile moves may never change the src set; their rects are live,
+ * so a timeout here just falls through to the stability wait.
+ */
+async function freshGrid(page, before) {
+  for (let i = 0; i < 8; i++) {
+    const cur = await tileGrid(page)
+    if (cur.length && gridKey(cur) !== before) break
+    await sleep(500)
+  }
+  return stableGrid(page)
 }
 
 /** Project lat/lng to viewport pixels from ONE tile anchor (Web-Mercator). */
@@ -161,9 +190,11 @@ function projectFrom(t, lat, lng) {
  * from THREE widely spread tiles and require agreement; a mixed grid never
  * reaches consensus and we wait/retry instead of navigating on lies.
  */
-async function consensusProject(page, lat, lng, tries = 12) {
+async function consensusProject(page, lat, lng, before = null, tries = 10) {
   for (let i = 0; i < tries; i++) {
-    const grid = await stableGrid(page)
+    // `before` (pre-move signature) forces the freshness wait; without a
+    // preceding move a plain stability read is fine.
+    const grid = before ? await freshGrid(page, before) : await stableGrid(page)
     // Spread anchors: nearest the centre, then farthest from it, then
     // farthest from both — a stale tile can't hide in all three.
     const byDist = (px, py) => [...grid].sort((a, b) =>
@@ -199,26 +230,32 @@ async function consensusProject(page, lat, lng, tries = 12) {
 const CX = 640
 const CY = 400
 
-/** One capped drag-pan of the content by (dx, dy) px (slow: kills inertia). */
+/**
+ * One capped drag-pan of the content by (dx, dy) px (slow, many steps: kills
+ * inertia). Returns the pre-move grid signature for the freshness gate.
+ */
 async function dragPan(page, dx, dy) {
+  const before = gridKey(await tileGrid(page))
   await page.mouse.move(CX, CY)
   await page.mouse.down()
-  await page.mouse.move(CX + dx, CY + dy, { steps: 12 })
+  await page.mouse.move(CX + dx, CY + dy, { steps: 16 })
   await page.mouse.up()
-  await sleep(1300) // inertia glide + tile reload
+  await sleep(1600) // inertia glide + tile reload
+  return before
 }
 
 /** Pan until (lat, lng) sits within `tol` px of the centre (capped drags). */
-async function panTo(page, lat, lng, tol = 30, maxPans = 12) {
+async function panTo(page, lat, lng, before = null, tol = 30, maxPans = 14) {
   for (let i = 0; i < maxPans; i++) {
-    const p = await consensusProject(page, lat, lng)
+    const p = await consensusProject(page, lat, lng, before)
+    before = null // freshness consumed; subsequent reads settle on their own
     const dx = CX - p.x
     const dy = CY - p.y
     if (Math.hypot(dx, dy) <= tol) return p
-    const cap = 250 / Math.max(250, Math.hypot(dx, dy))
-    await dragPan(page, dx * cap * 0.95, dy * cap * 0.95)
+    const cap = 200 / Math.max(200, Math.hypot(dx, dy))
+    before = await dragPan(page, dx * cap * 0.95, dy * cap * 0.95)
   }
-  const p = await consensusProject(page, lat, lng)
+  const p = await consensusProject(page, lat, lng, before)
   if (Math.hypot(CX - p.x, CY - p.y) > 100) {
     throw new Error(
       `pan to (${lat}, ${lng}) stalled at (${p.x.toFixed(0)}, ${p.y.toFixed(0)}) — refusing to misframe`,
@@ -230,25 +267,34 @@ async function panTo(page, lat, lng, tol = 30, maxPans = 12) {
 /**
  * Frame (lat, lng) centred at `targetZ`: per level, pan the target to the
  * centre FIRST (cheap at low z) and only then wheel ONCE at the centre, so
- * the target stays pinned whatever a tick jumps. Ends in an assert.
+ * the target stays pinned whatever a tick jumps. Ends in a double-read
+ * assert: two consensus projections 1.5 s apart (no moves between) must
+ * agree with each other AND centre the target — a reload still landing
+ * fails the second read instead of committing a stale-framed shot.
  */
 async function frameTarget(page, lat, lng, targetZ) {
-  for (let i = 0; i < 12; i++) {
-    let p = await panTo(page, lat, lng)
-    if (p.z === targetZ) break
-    await page.mouse.move(CX, CY)
-    await page.mouse.wheel({ deltaY: p.z < targetZ ? -50 : 90 })
-    await sleep(1400)
-  }
-  const done = await panTo(page, lat, lng, 30)
-  console.log(
-    `framed (${lat}, ${lng}): tile-z ${done.z} (want ${targetZ}), pixel (${done.x.toFixed(0)}, ${done.y.toFixed(0)})`,
-  )
-  if (done.z !== targetZ || Math.hypot(CX - done.x, CY - done.y) > 60) {
-    throw new Error(
-      `misframe: (${lat}, ${lng}) @z${targetZ} landed @z${done.z} pixel (${done.x.toFixed(0)}, ${done.y.toFixed(0)})`,
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let before = null
+    for (let i = 0; i < 12; i++) {
+      const p = await panTo(page, lat, lng, before)
+      before = null
+      if (p.z === targetZ) break
+      before = gridKey(await tileGrid(page))
+      await page.mouse.move(CX, CY)
+      await page.mouse.wheel({ deltaY: p.z < targetZ ? -50 : 90 })
+      await sleep(1800)
+    }
+    const first = await panTo(page, lat, lng, before, 30)
+    await sleep(1500) // stillness: any pending reload lands here, not later
+    const done = await consensusProject(page, lat, lng)
+    const drift = Math.hypot(first.x - done.x, first.y - done.y)
+    console.log(
+      `framed (${lat}, ${lng}): tile-z ${done.z} (want ${targetZ}), pixel (${done.x.toFixed(0)}, ${done.y.toFixed(0)}), drift ${drift.toFixed(0)} px`,
     )
+    if (done.z === targetZ && drift <= 12 && Math.hypot(CX - done.x, CY - done.y) <= 60) return
+    console.log(`frame attempt ${attempt + 1} rejected (stale grid?) — retrying`)
   }
+  throw new Error(`misframe: (${lat}, ${lng}) @z${targetZ} never settled — refusing to commit lies`)
 }
 
 const browser = await launch()
@@ -261,6 +307,11 @@ try {
     () => document.body.textContent?.includes('6 zones · No advisories'),
     { timeout: 20000 },
   )
+  // Kill CSS transitions/animations: Leaflet pans/zooms stop on a dime, so
+  // post-move reads settle fast. Steady-state pixels are identical.
+  await page.addStyleTag({
+    content: '*{transition-duration:0s!important;animation-duration:0s!important}',
+  })
   await sleep(1500)
 
   // Zone drawer open at desktop width; open it if not.
