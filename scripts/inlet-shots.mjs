@@ -30,15 +30,20 @@ const REQUIRE_TILES = (process.env.REQUIRE_TILES ?? '1') === '1'
 const MARK_TRUTH = (process.env.MARK_TRUTH ?? '1') === '1'
 fs.mkdirSync(OUT_DIR, { recursive: true })
 
-// Round-1 identification framings: [lat, lng, zoom].
+// Framings: [lat, lng, zoom]. PREFIX trace-id (round 1) or before/after.
 //  - corridor: reference-equivalent z15 (labels corridor + band + Caña + climb + apex)
 //  - north:    z15 over the apex + gap (rendered shore N of apex? river mouth?)
 //  - wide:     z13 bay-mouth context (far shore + estuary + river + gap)
+//  - estuary:  z16 close-up of the irawan band hugging the estuary shore
 const TARGETS = {
   corridor: [9.779, 118.7225, 15],
   north: [9.795, 118.71, 15],
   wide: [9.78, 118.715, 13],
+  estuary: [9.766, 118.705, 16],
 }
+
+// Readiness text differs: the pre-zone app seeds 6 zones, this branch 7.
+const ZONES_TEXT = PREFIX === 'before' ? '6 zones · No advisories' : '7 zones · No advisories'
 
 // Waypoints (truth) marked on debug shots: [label, lat, lng].
 const WAYPOINTS = [
@@ -232,8 +237,9 @@ try {
   await page.goto(`${BASE_URL}/map`, { waitUntil: 'domcontentloaded', timeout: 30000 })
   await page.waitForSelector('[data-testid="zone-drawer"]', { timeout: 15000 })
   await page.waitForFunction(
-    () => document.body.textContent?.includes('6 zones · No advisories'),
+    (text) => document.body.textContent?.includes(text),
     { timeout: 20000 },
+    ZONES_TEXT,
   )
   await page.addStyleTag({
     content: '*{transition-duration:0s!important;animation-duration:0s!important}',
@@ -297,6 +303,11 @@ try {
   await markTruth()
   await page.screenshot({ path: tag('wide') })
   console.log(`shot ${tag('wide')}`)
+
+  await frameTarget(page, ...TARGETS.estuary)
+  await markTruth()
+  await page.screenshot({ path: tag('estuary') })
+  console.log(`shot ${tag('estuary')}`)
 
   // Tile audit: did real tiles actually load?
   const tiles = await page.evaluate(() =>
