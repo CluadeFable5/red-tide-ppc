@@ -13,7 +13,10 @@
  *
  * Output: JSON file mapping each region to the coastline ways inside its bbox,
  * each way as an ordered [[lat, lng], ...] geometry, plus a flat merge of the
- * documented OSM ways (fetched from the main OSM API as a cross-check).
+ * documented OSM ways (fetched from the main OSM API as a cross-check, WITH
+ * tags), plus `islets` — tagged place=islet/island and natural=reef/shoal
+ * features inside the bay window, so offshore blobs are confirmed real or
+ * dismissed as rendering artifacts.
  *
  *   node scripts/fetch-coastline.mjs [output.json]
  */
@@ -26,7 +29,11 @@ const OUT = resolve(process.argv[2] ?? 'coastline-raw/overpass-coastline.json')
 
 /** One bbox per zone stretch, with ~0.02° margin. [south, west, north, east] */
 const REGIONS = {
-  'pp-bay': [9.7, 118.71, 9.79, 118.79],
+  // pp-bay carries a wider W/N margin than the other stretches: the west
+  // margin completes the bay's far-shore context (way 1529960722 runs to
+  // 118.692) and the north margin confirms the headland apex at 9.7877, N of
+  // which no further city-side coast exists.
+  'pp-bay': [9.7, 118.68, 9.82, 118.79],
   'sta-lourdes': [9.75, 118.72, 9.87, 118.79],
   honda: [9.83, 118.72, 9.95, 118.79],
   binuatan: [9.92, 118.8, 10.0, 118.93],
@@ -46,6 +53,7 @@ const DOCUMENTED_WAYS = [
   1530291482, 62049965, // binuatan Honda Bay north shore + NE coast
   61557844, 62049996, // sabang St. Paul Bay shore + east headland
   1530271757, // mangrove creek complex (context only; never traced)
+  236058175, // islet ~1.5 km off the pp-bay north shore (identity check; outside every band)
 ]
 
 const OVERPASS_ENDPOINTS = [
@@ -134,7 +142,59 @@ function fetchDocumentedWay(id) {
   )
   const way = data.elements.find((el) => el.type === 'way' && el.id === id)
   if (!way) throw new Error(`way ${id} missing from response`)
-  return { id, geometry: way.nodes.map((n) => nodes.get(n)).filter(Boolean) }
+  return {
+    id,
+    geometry: way.nodes.map((n) => nodes.get(n)).filter(Boolean),
+    tags: way.tags ?? {},
+  }
+}
+
+/**
+ * Identity check for charted islets/reefs inside the bay window. The
+ * coastline sweep returns geometry WITHOUT tags, so a dark blob on open
+ * water could be a real islet, a reef flat, or a rendering artifact. This
+ * pulls the tags (place=islet/island, natural=reef/shoal/...) so every
+ * closed coastline ring in the window is confirmed real or dismissed.
+ * Best-effort: the documented-way tags above answer the same question for
+ * the one known ring, so an islet-query failure warns but never fails CI.
+ */
+const ISLET_WINDOW = REGIONS['pp-bay'] // [south, west, north, east]
+
+function fetchIslets() {
+  const bb = ISLET_WINDOW.join(',')
+  const query =
+    `[out:json][timeout:60];(` +
+    `node["place"~"^(islet|island)$"](${bb});` +
+    `way["place"~"^(islet|island)$"](${bb});` +
+    `node["natural"~"^(reef|shoal|sand|bare_rock)$"](${bb});` +
+    `way["natural"~"^(reef|shoal)$"](${bb});` +
+    `);out body center;`
+  const encoded = 'data=' + encodeURIComponent(query)
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const data = curlJson(endpoint, { method: 'POST', data: encoded, timeoutSec: 120 })
+      const found = []
+      for (const el of data.elements ?? []) {
+        if (el.type === 'node') {
+          found.push({ type: 'node', id: el.id, tags: el.tags ?? {}, lat: el.lat, lon: el.lon })
+        } else if (el.type === 'way') {
+          found.push({
+            type: 'way',
+            id: el.id,
+            tags: el.tags ?? {},
+            lat: el.center?.lat ?? null,
+            lon: el.center?.lon ?? null,
+          })
+        }
+      }
+      console.log(`islets: ${found.length} tagged features in the bay window`)
+      return found
+    } catch (err) {
+      console.log(`  islet query @ ${endpoint}: ${err.message}`)
+    }
+  }
+  console.log('::warning::islet/reef identity query failed on every endpoint')
+  return []
 }
 
 const main = async () => {
@@ -175,6 +235,13 @@ const main = async () => {
     }
   }
 
+  let islets = []
+  try {
+    islets = fetchIslets()
+  } catch (err) {
+    console.log(`::warning::islet query threw: ${err.message}`)
+  }
+
   if (!overpassOk && documented.length === 0) {
     // Surface through a check-run annotation: the sandbox cannot download run
     // logs, but it CAN read annotations via the check-runs API.
@@ -196,7 +263,13 @@ const main = async () => {
   writeFileSync(
     OUT,
     JSON.stringify(
-      { fetchedAt: new Date().toISOString(), overpassOk, regions: byRegion, documented },
+      {
+        fetchedAt: new Date().toISOString(),
+        overpassOk,
+        regions: byRegion,
+        documented,
+        islets,
+      },
       null,
       1,
     ),
