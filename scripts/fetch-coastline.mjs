@@ -56,6 +56,8 @@ const DOCUMENTED_WAYS = [
   61557844, 62049996, // sabang St. Paul Bay shore + east headland
   1530271757, // mangrove creek complex (context only; never traced)
   236058175, // islet ~1.5 km off the pp-bay north shore (identity check; outside every band)
+  134867069, // closed coastline ring in open water W of the far shore (blob identity check)
+  645683227, // place=islet without a coastline tag: full geometry places its polygon
 ]
 
 const OVERPASS_ENDPOINTS = [
@@ -194,13 +196,73 @@ function fetchIslets() {
           })
         }
       }
-      console.log(`islets: ${found.length} tagged features in the bay window`)
-      return found
+      // Sweep windows overlap: dedupe by type+id.
+      const seen = new Set()
+      const deduped = found.filter((f) => {
+        const k = `${f.type}/${f.id}`
+        if (seen.has(k)) return false
+        seen.add(k)
+        return true
+      })
+      console.log(`islets: ${deduped.length} tagged features in the sweep windows`)
+      return deduped
     } catch (err) {
       console.log(`  islet query @ ${endpoint}: ${err.message}`)
     }
   }
   console.log('::warning::islet/reef identity query failed on every endpoint')
+  return []
+}
+
+/**
+ * Grounding for hand-traced reference views: the NAMED place features
+ * (barangays, suburbs, villages, hamlets...) in the sweep windows, plus the
+ * corridor landmarks visible as labels in the inlet reference screenshot —
+ * Colonel R. Gabuco Road, Sandiwa, Palawan State University — so the traced
+ * inlet pins to exact OSM coordinates rather than eyeballed pixels.
+ * Best-effort like the islet query: warns, never fails CI.
+ */
+function fetchPlaces() {
+  const clauses = SWEEP_WINDOWS.map((bb) => {
+    const b = bb.join(',')
+    return (
+      `node["place"]["name"](${b});` +
+      `way["place"]["name"](${b});` +
+      `relation["place"]["name"](${b});` +
+      `way["highway"]["name"~"Gabuco",i](${b});` +
+      `node["amenity"="university"]["name"~"Palawan State",i](${b});` +
+      `way["amenity"="university"]["name"~"Palawan State",i](${b});`
+    )
+  }).join('')
+  const query = `[out:json][timeout:60];(${clauses});out body center;`
+  const encoded = 'data=' + encodeURIComponent(query)
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const data = curlJson(endpoint, { method: 'POST', data: encoded, timeoutSec: 120 })
+      const found = []
+      for (const el of data.elements ?? []) {
+        const pos =
+          el.type === 'node'
+            ? { lat: el.lat, lon: el.lon }
+            : { lat: el.center?.lat ?? null, lon: el.center?.lon ?? null }
+        // `out center` gives ways/relations a centre; skip any it misses.
+        if (pos.lat === null || pos.lat === undefined) continue
+        found.push({ type: el.type, id: el.id, tags: el.tags ?? {}, ...pos })
+      }
+      const seen = new Set()
+      const deduped = found.filter((f) => {
+        const k = `${f.type}/${f.id}`
+        if (seen.has(k)) return false
+        seen.add(k)
+        return true
+      })
+      console.log(`places: ${deduped.length} named features in the sweep windows`)
+      return deduped
+    } catch (err) {
+      console.log(`  places query @ ${endpoint}: ${err.message}`)
+    }
+  }
+  console.log('::warning::named-places query failed on every endpoint')
   return []
 }
 
