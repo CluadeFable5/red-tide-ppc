@@ -54,7 +54,15 @@ export interface StatusTheme {
 
 const ZONE_THEME: Record<ZoneStatus, StatusTheme> = {
   safe: {
-    hex: '#3ddc84',
+    // Muted sage-teal, deliberately the quietest of the three. `safe` is the
+    // resting state for most of the bay most of the time — it should recede
+    // into the basemap, not compete with the two states that can actually tell
+    // you something. Contrast is still AA on both ink surfaces (#4a8a75 =
+    // 4.9:1 on #0a0a0a, 4.6:1 on #141414), which is why it stops there: a
+    // deeper green like #3d7a6a drops under 4.5 and this token is also text
+    // (`text-safe`), not just polygon paint. Mirrors `--color-safe` in
+    // index.css — same rule as every other status hex in this file.
+    hex: '#4a8a75',
     pillClass: 'bg-safe/12 text-safe ring-1 ring-inset ring-safe/30',
     quietPillClass: 'bg-safe/8 text-safe/90 ring-1 ring-inset ring-safe/20',
     solidClass: 'bg-safe text-ink',
@@ -137,8 +145,23 @@ export function zoneTheme(status: ZoneStatus): StatusTheme {
  * by hand, which risks the zone-click → popup → report-form flow for a
  * sub-200ms effect. Not worth it.
  *
- * `fillOpacity` at rest stays low (0.26): the dark basemap is what makes the
- * coastlines legible, and a heavy fill hides the thing people came to look at.
+ * `fillOpacity` at rest stays low (0.16–0.30): the dark basemap is what makes
+ * the coastlines legible, and a heavy fill hides the thing people came to look
+ * at. The at-rest levels are also a prominence ladder, not just "low-ish":
+ * `safe` sits furthest back (0.16), `unconfirmed` in the middle (0.26),
+ * `advisory` furthest forward (0.30). The same ladder runs through
+ * `strokeOpacity` — see below.
+ *
+ * STROKE OPACITY IS PART OF THE LADDER
+ * ------------------------------------
+ * There is no glow filter on the polygons; what read as a halo around `safe`
+ * outlines was the neon #3ddc84 stroke at 0.95 on a near-black ground — bright
+ * saturated green simply looks like it emits light there. `safe` now paints
+ * its outline at 0.55 so its border reads as a quiet boundary, while
+ * `advisory`/`unconfirmed` keep 0.95 and stay the loudest lines on the map.
+ * `weight` is left identical across statuses on purpose: the selected-zone
+ * emphasis and the dash for `unconfirmed` are the shape signals, and the press
+ * ramp in index.css assumes every status shares the same lift.
  */
 export interface ZonePaint {
   /** Outline + fill colour; the same hex the badge uses. */
@@ -153,10 +176,23 @@ export interface ZonePaint {
   fillSelected: number
   weight: number
   weightSelected: number
+  /**
+   * Outline strength at rest. Optional; `Map.tsx` falls back to 0.95, so only
+   * the status that should recede needs to declare it.
+   */
+  strokeOpacity?: number
 }
 
 const ZONE_PAINT: Record<ZoneStatus, ZonePaint> = {
-  safe: { hex: '#3ddc84', fill: 0.22, fillHover: 0.36, fillSelected: 0.46, weight: 2, weightSelected: 4 },
+  safe: {
+    hex: '#4a8a75',
+    fill: 0.16,
+    fillHover: 0.3,
+    fillSelected: 0.46,
+    weight: 2,
+    weightSelected: 4,
+    strokeOpacity: 0.55,
+  },
   unconfirmed: {
     hex: '#f0a500',
     dashArray: '6 5',

@@ -138,8 +138,8 @@ describe('six-item pass on /map (jsdom side)', () => {
     expect(paths).toHaveLength(6)
     for (const path of paths) {
       expect(path.classList.contains('zone-path')).toBe(true)
-      // All seed zones are `safe`: resting fill is 0.22.
-      expect(path.getAttribute('fill-opacity')).toBe('0.22')
+      // All seed zones are `safe`: resting fill is 0.16.
+      expect(path.getAttribute('fill-opacity')).toBe('0.16')
     }
 
     useAppStore.getState().selectZone('pp-bay')
@@ -150,7 +150,7 @@ describe('six-item pass on /map (jsdom side)', () => {
     })
     for (const other of paths) {
       if (other !== paths.find((p) => p.classList.contains('zone-path--selected'))) {
-        expect(other.getAttribute('fill-opacity')).toBe('0.22')
+        expect(other.getAttribute('fill-opacity')).toBe('0.16')
       }
     }
   })

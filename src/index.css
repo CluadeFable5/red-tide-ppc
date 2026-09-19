@@ -43,11 +43,15 @@
 
   /* -- Status ------------------------------------------------------------
      Retuned for a near-black ground: the light-theme values (green-600,
-     amber-500, red-600) go muddy against #080808. These are lighter and more
-     saturated so all three stay distinguishable, including for the ~8% of
-     men with red/green colour vision deficiency — which is why status is
-     never communicated by colour alone anywhere in this UI.              */
-  --color-safe: #3ddc84;
+     amber-500, red-600) go muddy against #080808. `unconfirmed` and
+     `advisory` are the lighter, saturated end of that retune — they are the
+     states that can tell you something. `safe` is deliberately the quietest:
+     a muted sage-teal (30% sat) that still clears AA as text (4.9:1 on ink)
+     but no longer glows like a UI highlight. The three stay distinguishable
+     for the ~8% of men with red/green colour vision deficiency — which is
+     why status is never communicated by colour alone anywhere in this UI:
+     solid vs dashed outlines, pulse, and the label are load-bearing too.  */
+  --color-safe: #4a8a75;
   --color-unconfirmed: #f0a500;
   --color-advisory: #ff5252;
 
