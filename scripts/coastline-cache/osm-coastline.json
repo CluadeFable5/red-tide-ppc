@@ -1,5 +1,5 @@
 {
- "fetchedAt": "2026-09-19T11:59:39.213Z",
+ "fetchedAt": "2026-09-19T13:26:11.362Z",
  "overpassOk": true,
  "regions": {
   "pp-bay": [
@@ -23695,39 +23695,6 @@
    }
   }
  ],
- "islets": [
-  {
-   "type": "way",
-   "id": 236058175,
-   "tags": {
-    "alt_name": "Caña Island",
-    "name": "Caña",
-    "natural": "coastline",
-    "place": "islet",
-    "source:name": "GNS"
-   },
-   "lat": 9.7633533,
-   "lon": 118.7194882
-  },
-  {
-   "type": "way",
-   "id": 645683227,
-   "tags": {
-    "place": "islet"
-   },
-   "lat": 9.7777671,
-   "lon": 118.7072053
-  },
-  {
-   "type": "way",
-   "id": 989904274,
-   "tags": {
-    "name": "River Island",
-    "natural": "coastline",
-    "place": "islet"
-   },
-   "lat": 9.737167,
-   "lon": 118.6990984
-  }
- ]
+ "islets": [],
+ "places": []
 }
