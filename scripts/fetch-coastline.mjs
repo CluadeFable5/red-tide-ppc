@@ -36,6 +36,14 @@ const REGIONS = {
   // 118.692) and the north margin confirms the headland apex at 9.7877, N of
   // which no further city-side coast exists.
   'pp-bay': [9.7, 118.68, 9.82, 118.79],
+  // apex-north: the inlet / outer coast NW of the San Jose headland apex
+  // (pp-bay's N cap at 9.7877, 118.7194), hand-traced from the reference
+  // screenshot against the Colonel R. Gabuco Road / Sandiwa / PSU /
+  // Tiniguiban label corridor. No coastline N of the apex exists inside the
+  // pp-bay bbox, so the inlet coast must swing W of 118.68 — hence the wide
+  // west margin. South edge overlaps the apex + far-shore embayment for graph
+  // connectivity with the pp-bay run; east edge overlaps the known corridor.
+  'apex-north': [9.76, 118.58, 9.92, 118.76],
   'sta-lourdes': [9.75, 118.72, 9.87, 118.79],
   honda: [9.83, 118.72, 9.95, 118.79],
   binuatan: [9.92, 118.8, 10.0, 118.93],
@@ -166,6 +174,15 @@ function fetchDocumentedWay(id) {
 // window, so islets/reefs AND named landmarks are swept everywhere a
 // hand-traced reference view could reach.
 const SWEEP_WINDOWS = [REGIONS['pp-bay'], REGIONS['apex-north']]
+
+// Fail fast on a misconfigured sweep window: an undefined bbox here used to
+// throw INSIDE the query builders, where the per-query try/catch demoted it
+// to a warning and committed silent empty islets/places arrays over good data.
+for (const [i, w] of SWEEP_WINDOWS.entries()) {
+  if (!Array.isArray(w) || w.length !== 4 || !w.every(Number.isFinite)) {
+    throw new Error(`SWEEP_WINDOWS[${i}] is not a valid bbox — refusing to sweep`)
+  }
+}
 
 function fetchIslets() {
   const clauses = SWEEP_WINDOWS.map((bb) => {
