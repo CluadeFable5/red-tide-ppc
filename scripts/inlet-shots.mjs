@@ -39,7 +39,7 @@ const TARGETS = {
   corridor: [9.779, 118.7225, 15],
   north: [9.795, 118.71, 15],
   wide: [9.78, 118.715, 13],
-  estuary: [9.766, 118.705, 16],
+  estuary: [9.7755, 118.704, 16],
 }
 
 // Readiness text differs: the pre-zone app seeds 6 zones, this branch 7.
