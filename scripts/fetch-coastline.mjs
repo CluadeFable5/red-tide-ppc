@@ -256,13 +256,22 @@ const main = async () => {
     console.log(`::warning::places query threw: ${err.message}`)
   }
 
-  if (!overpassOk && documented.length === 0) {
-    // Surface through a check-run annotation: the sandbox cannot download run
-    // logs, but it CAN read annotations via the check-runs API.
+  if (!overpassOk) {
+    // NEVER commit a cache with an empty region sweep: it would clobber the
+    // previous good geometry (generate-zones needs full runs, not just the
+    // documented ways). Fail loudly instead — nothing is written, nothing is
+    // committed — and retry the workflow once Overpass recovers. Errors
+    // surface through a check-run annotation: the sandbox cannot download
+    // run logs, but it CAN read annotations via the check-runs API.
     console.log(
-      `::error::Coastline fetch failed. Errors: ${errors.slice(0, 6).join(' || ').slice(0, 3500)}`,
+      `::error::Overpass sweep failed (no coastline for any region). Errors: ${errors.slice(0, 6).join(' || ').slice(0, 3500)}`,
     )
-    throw new Error('no coastline source succeeded')
+    throw new Error('overpass sweep failed — refusing to clobber the cache')
+  }
+  if (documented.length === 0) {
+    // The sweep is the load-bearing source; the documented ways are the
+    // cross-check. Proceed without them, but say so.
+    console.log('::warning::all documented-way fetches failed; regions still committed')
   }
 
   const summary = Object.fromEntries(
