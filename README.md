@@ -65,6 +65,7 @@ Red Tide PPC gives those sightings somewhere to go, and gives a local reviewer a
    - **Approve** → the report becomes `confirmed` **and** its zone becomes `advisory` with `lastUpdated = now`.
    - **Reject** → the report becomes `rejected` and the zone is left exactly as it was.
 5. **Manual control only** — zone status never changes by itself. When the water is cleared, an admin reverts the zone to `safe` from the admin view's **Zones** tab.
+6. **Optional shipping-channel overlay** — a ship icon in the header toggles dashed blue PCG traffic-lane lines for the port approach (see §11), so someone drifting while gleaning can see where ship traffic is channelled. Off by default; a safety reference, not an advisory.
 
 ---
 
@@ -213,6 +214,8 @@ src/
   store.ts                # ALL datastore calls + app state (Zustand)
   data/
     zones.ts              # the six pre-seeded zones + polygon helper
+    coastline.ts          # generated dense OSM coastline runs (test reference)
+    shipping.ts           # PPTSS shipping-channel lines (PCG circular transcription)
   lib/
     backend.ts            # Backend contract + which implementation to use
     backend.firebase.ts   # Firestore + Cloudinary upload plumbing
@@ -224,6 +227,7 @@ src/
     image.ts              # photo size/type checks, downscale for demo mode
   components/
     Map.tsx               # react-leaflet map, polygons, popups
+    ShippingLayer.tsx     # toggleable PPTSS navigation-hazard line overlay
     ZonePopup.tsx         # popup content + "Report something here"
     ReportForm.tsx        # report modal / bottom sheet
     ReportCard.tsx        # one report in the admin queue
@@ -341,7 +345,19 @@ Before this is used for real public-health decisions, replace them with the actu
 
 ---
 
-## 11. Explicitly out of scope for this MVP
+## 11. Shipping channel overlay (PPTSS)
+
+A toggleable **navigation-hazard layer** under the advisory zones: the boundary lines of the **Puerto Princesa Traffic Separation Scheme** — the official PCG shipping lanes for the port approach, which the pp-bay advisory waters sit right next to. Small craft (under 20 m), sailing vessels and fishing boats are directed by the circular's own rules to stay inshore of these lines and, if they must cross, to cross at right angles — exactly the audience drifting while gleaning.
+
+**Sourcing (honest):** OpenStreetMap has **no** shipping-lane data for this area — a dedicated Overpass sweep (2026-09-19, `scripts/fetch-seamarks.mjs` + CI, raw result in `scripts/seamark-cache/osm-seamarks.json`) found only 5 seamark-tagged objects in the whole bay region (three lighthouses, a pier, a coast guard station) and nothing route-related anywhere near Palawan. So nothing here comes from OSM. Every coordinate in `src/data/shipping.ts` is transcribed verbatim from the Philippine Coast Guard's circular — *"Puerto Princesa Traffic Separation Scheme (PPTSS)"*, MC of 06 June 2017 (rescinds MC 02-15 of 2015), boundaries per NAMRIA Chart Nr. 4333 — retrieved via the Internet Archive after the live coastguard.gov.ph PDF proved unreachable. It is an **unofficial transcription of an official document**, not a chart digitisation: the in-app tooltip and `src/data/shipping.test.ts` both carry the source and that caveat (the test also asserts the circular's stated geometry — 60 m separation zone, 400 m lanes, 292°T in / 112°T out — so a transcription typo fails CI).
+
+**Rendering:** dashed **blue** lines with a white casing (`src/components/ShippingLayer.tsx`) — deliberately unlike the green/yellow/red advisory palette; lines, never fills; hazards (submerged wreck, Gideon Shoal buoy, fairway buoy) as blue dots. Tap/hover says "Shipping channel — do not cross" plus a one-line note per feature and the transcription disclaimer. The layer is **off by default** (ship icon in the header toggles it — `useState` in `MapPage`, not the store) and draws *under* the zone polygons, so it never competes with advisory status. It is **not seeded into Firestore** — static reference data, nothing admins approve or reject.
+
+**If the PCG/PPA publishes a revised scheme or a chart digitisation:** update the coordinates and `sourceDms` in `src/data/shipping.ts`; the tests verify the stated geometry. If this is ever used for anything beyond a visual aid, verify against NAMRIA Chart Nr. 4333 first.
+
+---
+
+## 12. Explicitly out of scope for this MVP
 
 - **No user accounts** and no auth beyond the admin passcode gate.
 - **No push notifications** and no SMS/route-based alerts.
@@ -352,7 +368,7 @@ Before this is used for real public-health decisions, replace them with the actu
 
 ---
 
-## 12. What to fix before real use
+## 13. What to fix before real use
 
 1. **Replace the passcode with Firebase Auth** and an `admin` custom claim; lock `zones` and `reports` updates behind it. The current gate is a string compare against a value that is readable in the page source.
 2. **Tighten `firestore.rules`** once zones are seeded (`allow create: if false` on `zones`).
@@ -363,7 +379,7 @@ Before this is used for real public-health decisions, replace them with the actu
 
 ---
 
-## 13. Tests
+## 14. Tests
 
 ```bash
 npm test
@@ -400,7 +416,7 @@ Additional one-off verification scripts (bottom sheet snap points, header fade t
 
 ---
 
-## 14. Making common changes
+## 15. Making common changes
 
 | I want to… | Touch this |
 | --- | --- |

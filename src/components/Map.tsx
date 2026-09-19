@@ -5,6 +5,7 @@ import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, zonesBoundingBox } from '
 import { zonePaint } from '../styles/statusTheme'
 // `LatLng` here is our own [lat, lng] tuple, which Leaflet accepts directly.
 import type { LatLng, Zone } from '../types'
+import { ShippingLayer } from './ShippingLayer'
 import { ZonePopup } from './ZonePopup'
 
 export interface MapProps {
@@ -18,6 +19,11 @@ export interface MapProps {
   focusZoneId: string | null
   /** Bump this together with `focusZoneId` to trigger the zoom. */
   focusToken: number
+  /**
+   * Show the shipping-channel (PCG PPTSS) navigation-hazard overlay. Off by
+   * default: it is a secondary safety reference, not the app's purpose.
+   */
+  shippingLanesVisible?: boolean
   onSelectZone: (zoneId: string) => void
   onReport: (zoneId: string) => void
 }
@@ -294,6 +300,7 @@ export function Map({
   resetToken,
   focusZoneId,
   focusToken,
+  shippingLanesVisible = false,
   onSelectZone,
   onReport,
 }: MapProps) {
@@ -336,6 +343,10 @@ export function Map({
       <FitToBounds box={box} resetToken={resetToken} />
       <FocusZone zone={focusZone} token={focusToken} />
       <ZonePressFeedback />
+
+      {/* Navigation-hazard lines sit UNDER the advisory polygons: secondary
+          reference, never competing with the status colours. */}
+      {shippingLanesVisible && <ShippingLayer />}
 
       {zones.map((zone) => (
         <ZonePolygon

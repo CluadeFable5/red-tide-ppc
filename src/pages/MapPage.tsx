@@ -54,6 +54,10 @@ export function MapPage() {
 
   const [resetToken, setResetToken] = useState(0)
   const [focusToken, setFocusToken] = useState(0)
+  // Shipping-channel overlay (PCG PPTSS lines): OFF by default — a secondary
+  // safety reference that must not compete with the advisory zones. Local UI
+  // state on purpose: not app data, nothing to persist or sync.
+  const [shippingLanesVisible, setShippingLanesVisible] = useState(false)
 
   // One controller for the sheet and the map underlay: they read the same
   // progress value, so they can never disagree mid-drag.
@@ -119,6 +123,7 @@ export function MapPage() {
           resetToken={resetToken}
           focusZoneId={selectedZoneId}
           focusToken={focusToken}
+          shippingLanesVisible={shippingLanesVisible}
           onSelectZone={selectZone}
           onReport={openReportForm}
         />
@@ -176,6 +181,34 @@ export function MapPage() {
           right={
             <>
               <DemoBanner variant="chip" />
+              <button
+                type="button"
+                onClick={() => setShippingLanesVisible((visible) => !visible)}
+                aria-pressed={shippingLanesVisible}
+                aria-label="Shipping channel overlay — show or hide the port traffic lanes"
+                title="Shipping channel overlay (PCG TSS) — where boats meet ship traffic"
+                className={`grid h-8 min-w-8 place-items-center rounded-md border px-1.5 backdrop-blur-md transition-colors active:scale-95 ${
+                  shippingLanesVisible
+                    ? 'border-[#2e7cd6] bg-[#2e7cd6]/15 text-[#9cc4f7]'
+                    : 'border-line bg-ink-2/85 text-paper/75 hover:border-accent/40 hover:text-accent'
+                }`}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  {/* ship: hull + cargo + waterline */}
+                  <path d="M3 17c1.5 1.6 3 1.6 4.5 0s3-1.6 4.5 0 3 1.6 4.5 0 3-1.6 4.5 0" />
+                  <path d="M5 13.5 6 8h12l1 5.5" />
+                  <path d="M12 8V5m-3 3V6h6v2" />
+                </svg>
+              </button>
               <button
                 type="button"
                 onClick={() => setResetToken((token) => token + 1)}
