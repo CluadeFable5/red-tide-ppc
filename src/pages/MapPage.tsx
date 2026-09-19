@@ -2,10 +2,10 @@ import { LiveDataStatus } from '../components/LiveDataStatus'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { RegistrationMarks, Scanline, TideGauge } from '../components/Ambient'
+import { RegistrationMarks, Scanline } from '../components/Ambient'
 import { DemoBanner } from '../components/DemoBanner'
 import { Header } from '../components/Header'
-import { Legend } from '../components/Legend'
+import { StatusPanel } from '../components/StatusPanel'
 import { MapLoadingOverlay } from '../components/LoadingState'
 import { Map } from '../components/Map'
 import { Notice } from '../components/Notice'
@@ -189,7 +189,7 @@ export function MapPage() {
 
       {/* ------------------------------------------------------------------
           Layer 3: floating chrome.
-          - Legend & gauge fade early (before mid) so nothing half-covered.
+          - Status panel fades early (before mid) so nothing half-covered.
           - Header fades late (only at full) — visible at mid/peek, hidden at
             full. This avoids stale-chrome: when dragging down from full to
             mid/peek, header fades back in promptly by 70% progress (headerOpacity
@@ -293,13 +293,12 @@ export function MapPage() {
         />
       </motion.div>
 
-      <Legend counts={statusCounts} style={{ opacity: sheet.chromeOpacity }} />
-
-      <TideGauge
+      <StatusPanel
+        counts={statusCounts}
         advisory={statusCounts.advisory}
         zones={zones.length}
         pending={pendingTotal}
-        style={{ opacity: sheet.chromeOpacity }}
+        chromeOpacity={sheet.chromeOpacity}
       />
 
       {!zonesReady && <MapLoadingOverlay />}
