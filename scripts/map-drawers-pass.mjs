@@ -160,7 +160,7 @@ async function gotoMap(page) {
   await page.waitForSelector('[data-testid="map-attribution"]', { timeout: 15000 })
   // Wait for seeded zones (demo backend resolves async).
   await page.waitForFunction(
-    () => document.body.textContent?.includes('6 zones · No advisories'),
+    () => document.body.textContent?.includes('7 zones · No advisories'),
     { timeout: 15000 },
   )
   await settle(page)

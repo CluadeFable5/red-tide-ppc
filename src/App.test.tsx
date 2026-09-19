@@ -93,7 +93,7 @@ describe('landing page (/)', () => {
     expect(screen.getByRole('link', { name: /report a sighting/i })).toBeTruthy()
 
     // The live readout lands from the demo backend (synchronous subscribe).
-    expect(await screen.findByText('6 zones watched')).toBeTruthy()
+    expect(await screen.findByText('7 zones watched')).toBeTruthy()
     expect(screen.getByText('Zones watched')).toBeTruthy()
   })
 })
@@ -270,11 +270,11 @@ describe('live data announcement routing', () => {
     const user = userEvent.setup()
     render(<App />)
     const channel = () => screen.getByRole('status', { name: 'Live coastal data' })
-    await waitFor(() => expect(channel().textContent).toContain('6 zones watched'))
+    await waitFor(() => expect(channel().textContent).toContain('7 zones watched'))
     expect(screen.getAllByRole('status', { name: 'Live coastal data' })).toHaveLength(1)
 
     await openMap(user)
-    await waitFor(() => expect(channel().textContent).toContain('6 zones watched'))
+    await waitFor(() => expect(channel().textContent).toContain('7 zones watched'))
     expect(screen.getAllByRole('status', { name: 'Live coastal data' })).toHaveLength(1)
 
     await user.click(screen.getByRole('link', { name: 'Admin' }))

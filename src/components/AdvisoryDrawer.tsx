@@ -14,7 +14,7 @@ import { useClipWindowWidth, useSidePanel } from '../motion/useSidePanel'
  *
  * WHAT IT IS
  * ----------
- * The "Advisory signal" card (the 0% gauge + 0/6 ADV · 0 PEND readout) sits
+ * The "Advisory signal" card (the 0% gauge + 0/7 ADV · 0 PEND readout) sits
  * in the top-right control column, between the zoom buttons and the zone
  * drawer's tab. On a phone it permanently covers that corner of the map, so
  * it tucks away into the RIGHT edge, leaving only a grab tab.

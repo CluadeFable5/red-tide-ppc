@@ -27,7 +27,7 @@ import type { LatLng, ZoneStatus } from '../types'
  * wharf itself (E-facing strip meets N-facing strip) and at the San Jose
  * headland (pp-bay's N cap, where the coast reverses onto the bay's far
  * shore) — each zone takes its own natural cap and a small wedge of open
- * water stays uncovered between them.
+ * water stays uncovered between pp-bay and irawan.
  *
  * Shoreline sources: OSM API and Overpass (re-fetched 2026-09-19 by CI, see
  * scripts/fetch-coastline.mjs; raw cache committed at
@@ -36,6 +36,10 @@ import type { LatLng, ZoneStatus } from '../types'
  *   pp-bay        1201582689, 1201581683, 1201581684 (Bancao-Bancao shore),
  *                 4247188 + node 1044151904 (port basin and city waterfront),
  *                 1529960715 + apex node of 1529960721 (headland point)
+ *   irawan        1529960722 (bay-mouth far shore: Iwahig approach N up
+ *                 the Irawan valley side, through the river-mouth estuary
+ *                 bite, capped high on the east wall short of the pp-bay
+ *                 seam)
  *   sta-lourdes   62049956 (peninsula east coast, Blue Palawan -> wharf and
  *                 pier complex), 1530225667 (harbour shore N of the pier)
  *   honda-inner   1530225665, 1530225667, 1530236382 (bay west shore)
@@ -54,6 +58,8 @@ import type { LatLng, ZoneStatus } from '../types'
  *   Antonio Bautista Golf Course         9.7451 N, 118.7649 E
  *   San Manuel (barangay, N of city)     9.7789 N, 118.7584 E
  *   San Jose headland apex (pp-bay N cap) 9.7877 N, 118.7194 E
+ *   Irawan estuary wall (irawan N cap)    9.7720 N, 118.7124 E
+ *   Irawan (barangay, W of the bay)       9.8012 N, 118.6923 E
  *   Tagburos (barangay)                  9.8198 N, 118.7410 E
  *   Santa Lourdes (barangay)             9.8345 N, 118.7255 E
  *   Santa Lourdes Wharf                  9.8433 N, 118.7463 E
@@ -970,6 +976,91 @@ export const SEED_ZONES: SeedZone[] = [
       [10.212883, 118.8766],
       [10.21286, 118.869952],
       [10.213146, 118.868054],
+    ],
+    status: 'safe',
+  },
+  {
+    id: 'irawan',
+    name: 'Irawan Coastal Waters',
+    description:
+      'The far shore of the bay mouth west of the city — the Irawan river-mouth estuary and the straight shore south toward Iwahig, facing the city waterfront across open water.',
+    /**
+     * 65 vertices (37 landward / 28 seaward), 400 m coastal band. Landward
+     * edge traces the real OSM coastline (way 1529960722) NNE from the
+     * Iwahig approach up the Irawan valley side, through the river-mouth
+     * estuary bite to high on its east wall (within 20 m of it everywhere).
+     * Seaward edge is the smooth parallel buffer contour 400 m out in the
+     * bay mouth. Capped short of pp-bay's seaward arc: the estuary tip, V,
+     * climb and apex wedge stay uncovered between the zones. The
+     * estuary-mouth reef (way 134867069) sits inside the band; Caña and
+     * islet 645683227 stay outside it.
+     */
+    polygon: [
+      [9.744728, 118.695818],
+      [9.747023, 118.694474],
+      [9.747662, 118.693743],
+      [9.748128, 118.693667],
+      [9.749287, 118.693779],
+      [9.750512, 118.693661],
+      [9.751088, 118.693023],
+      [9.753495, 118.69316],
+      [9.755257, 118.69287],
+      [9.757687, 118.692385],
+      [9.758325, 118.691915],
+      [9.759012, 118.692477],
+      [9.760085, 118.693005],
+      [9.762348, 118.692868],
+      [9.76387, 118.691778],
+      [9.769426, 118.692186],
+      [9.774412, 118.695997],
+      [9.774385, 118.696765],
+      [9.774769, 118.69714],
+      [9.776278, 118.697619],
+      [9.777389, 118.697531],
+      [9.778171, 118.698203],
+      [9.778551, 118.698823],
+      [9.778611, 118.700642],
+      [9.778529, 118.70115],
+      [9.778074, 118.701993],
+      [9.77667, 118.703006],
+      [9.776165, 118.704108],
+      [9.777052, 118.705274],
+      [9.777049, 118.70566],
+      [9.775435, 118.706377],
+      [9.775757, 118.707055],
+      [9.775679, 118.707224],
+      [9.774864, 118.707626],
+      [9.774532, 118.70859],
+      [9.773239, 118.710739],
+      [9.771971, 118.712448],
+      [9.774845, 118.714644],
+      [9.773798, 118.715592],
+      [9.773158, 118.715894],
+      [9.771769, 118.716092],
+      [9.771072, 118.715982],
+      [9.769807, 118.715364],
+      [9.769288, 118.71488],
+      [9.768575, 118.713653],
+      [9.768379, 118.712243],
+      [9.76873, 118.710864],
+      [9.771262, 118.707019],
+      [9.772583, 118.704182],
+      [9.772903, 118.702569],
+      [9.773906, 118.700691],
+      [9.772275, 118.69977],
+      [9.771405, 118.69881],
+      [9.771001, 118.69796],
+      [9.768109, 118.695749],
+      [9.764893, 118.695513],
+      [9.763846, 118.696186],
+      [9.762562, 118.696512],
+      [9.759687, 118.696633],
+      [9.75801, 118.696041],
+      [9.754071, 118.696763],
+      [9.752395, 118.696753],
+      [9.7515, 118.697171],
+      [9.749139, 118.697413],
+      [9.746526, 118.698979],
     ],
     status: 'safe',
   },

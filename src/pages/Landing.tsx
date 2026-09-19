@@ -71,7 +71,7 @@ const LANDING_CONTAINER =
   'w-full max-w-2xl px-5 min-[400px]:px-6 md:max-w-4xl md:px-8 lg:max-w-6xl xl:max-w-7xl xl:px-10 2xl:max-w-[100rem] 2xl:px-12'
 
 const HOW_IT_WORKS = [
-  'Find your shore — six zones cover the coast, from the city bay to St. Paul Bay.',
+  'Find your shore — seven zones cover the coast, from the city bay to St. Paul Bay.',
   'Report what you see — water colour, dead shellfish; ten words is enough.',
   'A local admin verifies it — if it checks out, the zone goes under advisory.',
 ] as const

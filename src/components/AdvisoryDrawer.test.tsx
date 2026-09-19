@@ -314,9 +314,9 @@ describe('AdvisoryDrawer on the map page', () => {
 
     const live = await screen.findByTestId('advisory-drawer')
     expect(live.dataset.state).toBe('open')
-    // Seeded demo data: 6 zones, none under advisory.
+    // Seeded demo data: 7 zones, none under advisory.
     expect(screen.getByText('Advisory signal')).toBeTruthy()
-    expect(screen.getByText('0/6 adv · 0 pend')).toBeTruthy()
+    expect(screen.getByText('0/7 adv · 0 pend')).toBeTruthy()
 
     // The drawer lives in the top-right control column now, under the zoom.
     const column = screen.getByTestId('map-control-column')

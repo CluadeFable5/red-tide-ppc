@@ -86,6 +86,21 @@ const ZONE_RUNS: Record<string, ZoneRun> = {
     water: [10.22, 118.9],
     width: 350,
   },
+  irawan: {
+    // Starts at way node 8 (past the S-end jog, on straight shore) so the
+    // S cap cuts square across the shore — starting at the way joint
+    // (node 0) skews the cap along-shore with its corner on land.
+    from: [9.7447, 118.6958], // 1529960722 node 8 (Iwahig approach)
+    // The bay mouth's far shore: straight NNE reach up the Irawan valley
+    // side, then the Irawan river-mouth estuary bite. Capped high up the
+    // estuary's east wall (way node 68) — pp-bay's seaward arc rounds
+    // 400 m W of its E-W corner through the estuary-tip water, so the
+    // tip, V, climb and apex wedge stay uncovered (see the San Jose
+    // headland note in zones.ts).
+    to: [9.772, 118.7124],
+    water: [9.775, 118.725], // open bay-mouth water E of the run
+    width: 400,
+  },
 }
 
 /**

@@ -89,7 +89,7 @@ describe('six-item pass on /map (jsdom side)', () => {
 
     const panel = drawer()
     expect(panel.dataset.state).toBe('collapsed')
-    expect(within(panel).getByText('6 zones · No advisories')).toBeTruthy()
+    expect(within(panel).getByText('7 zones · No advisories')).toBeTruthy()
     expect(within(panel).getByText('01 / 02')).toBeTruthy()
 
     const attribution = within(panel).getByRole('link', { name: '© OSM' })
@@ -144,7 +144,7 @@ describe('six-item pass on /map (jsdom side)', () => {
     const paths = Array.from(
       document.querySelectorAll<SVGPathElement>('.leaflet-overlay-pane path'),
     )
-    expect(paths).toHaveLength(6)
+    expect(paths).toHaveLength(7)
     for (const path of paths) {
       expect(path.classList.contains('zone-path')).toBe(true)
       // All seed zones are `safe`: resting fill is 0.16.

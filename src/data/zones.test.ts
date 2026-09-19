@@ -14,9 +14,9 @@ import { MAP_CENTER, SEED_ZONES, zonesBoundingBox } from './zones'
  */
 
 describe('SEED_ZONES', () => {
-  it('seeds between 4 and 6 zones, all starting safe', () => {
+  it('seeds between 4 and 7 zones, all starting safe', () => {
     expect(SEED_ZONES.length).toBeGreaterThanOrEqual(4)
-    expect(SEED_ZONES.length).toBeLessThanOrEqual(6)
+    expect(SEED_ZONES.length).toBeLessThanOrEqual(7)
     for (const zone of SEED_ZONES) {
       expect(zone.status).toBe('safe')
     }
@@ -100,6 +100,7 @@ describe('SEED_ZONES', () => {
       'honda-outer': [9.9303358, 118.7543035], // Honda Bay mouth, W shore (1530271755)
       binuatan: [9.9400388, 118.8206470], // NE coast S end (62049965)
       sabang: [10.2098884, 118.8676876], // Sabang shore W end (61557844)
+      irawan: [9.7590124, 118.6924772], // straight reach (1529960722 node 24)
     }
     for (const zone of SEED_ZONES) {
       const shore = shoreNodes[zone.id]
@@ -250,6 +251,56 @@ describe('SEED_ZONES', () => {
         pointStrictlyInside([lat, lng], ring),
         `${label} (${lat}, ${lng}) must be ${expected ? 'INSIDE' : 'OUTSIDE'} the pp-bay band`,
       ).toBe(expected)
+    }
+  })
+
+  it('covers water and excludes land around the irawan estuary and the apex wedge', () => {
+    // irawan caps high on the estuary's east wall because pp-bay's seaward
+    // arc rounds through the estuary-tip water: the tip, V, climb and apex
+    // wedge stay uncovered between the two zones (see zones.ts). These
+    // probes pin that seam: estuary/reach water inside the band, valley
+    // land and the wedge outside it, and the offshore features disposed —
+    // the estuary-mouth reef inside, Caña and islet 645683227 outside.
+    // Sides were established from OSM way 1529960722's direction (run heads
+    // NNE with water on its right / E) and cross-checked numerically.
+    const irawan = SEED_ZONES.find((zone) => zone.id === 'irawan')
+    expect(irawan, 'irawan must exist').toBeDefined()
+    const ring = irawan!.polygon
+    expect(
+      ring.length,
+      `irawan polygon has ${ring.length} vertices — expected the generated 65`,
+    ).toBe(65)
+    const ppBay = SEED_ZONES.find((zone) => zone.id === 'pp-bay')!.polygon
+    // [label, lat, lng, expectInsideIrawan]
+    const probes: Array<[string, number, number, boolean]> = [
+      ['reach water E of node 16', 9.7505, 118.6959, true],
+      ['S band water', 9.746, 118.6975, true],
+      ['estuary wall water', 9.7767, 118.7052, true],
+      ['hook pocket water', 9.7783, 118.6997, true],
+      ['estuary-mouth reef (134867069)', 9.7736, 118.6993, true],
+      ['valley land W of node 24', 9.759, 118.6885, false],
+      ['S land', 9.7455, 118.694, false],
+      ['land beyond N cap', 9.7785, 118.712, false],
+      ['apex/climb wedge water', 9.7765, 118.7165, false],
+      ['estuary tip (way node 72)', 9.7712, 118.7162, false],
+      ['islet 645683227 (concave pocket)', 9.7778, 118.7072, false],
+      ['Caña (open bay mouth)', 9.7634, 118.7195, false],
+    ]
+    for (const [label, lat, lng, expected] of probes) {
+      expect(
+        pointStrictlyInside([lat, lng], ring),
+        `${label} (${lat}, ${lng}) must be ${expected ? 'INSIDE' : 'OUTSIDE'} the irawan band`,
+      ).toBe(expected)
+    }
+    // the wedge stays uncovered by BOTH zones (the documented seam)
+    for (const [label, lat, lng] of [
+      ['apex/climb wedge water', 9.7765, 118.7165],
+      ['estuary tip (way node 72)', 9.7712, 118.7162],
+    ]) {
+      expect(
+        pointStrictlyInside([lat as number, lng as number], ppBay),
+        `${label} must also be OUTSIDE the pp-bay band (uncovered wedge)`,
+      ).toBe(false)
     }
   })
 })
