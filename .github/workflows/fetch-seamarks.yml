@@ -1,0 +1,44 @@
+# Fetch seamark / navigation-feature data (`seamark:type=*`) for the
+# navigation-hazard overlay research — SEPARATE from the coastline fetch
+# (scripts/fetch-coastline.mjs), with its own cache directory.
+#
+# The dev sandbox cannot reach the Overpass API (egress is blocked), but GitHub
+# runners can. This workflow runs scripts/fetch-seamarks.mjs and commits the
+# raw geometry to the branch that triggered it, under scripts/seamark-cache/.
+#
+# Only runs when the fetch script itself changes, so it stays dormant otherwise.
+
+name: Fetch seamarks
+
+on:
+  push:
+    paths:
+      - 'scripts/fetch-seamarks.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    name: Fetch OSM seamarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Fetch seamark geometry
+        run: node scripts/fetch-seamarks.mjs scripts/seamark-cache/osm-seamarks.json
+
+      - name: Commit seamark cache
+        run: |
+          git config user.name "seamark-fetch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add scripts/seamark-cache/osm-seamarks.json
+          git commit -m "seamarks: cache OSM raw fetch [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

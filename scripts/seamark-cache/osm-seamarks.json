@@ -1,0 +1,686 @@
+{
+ "fetchedAt": "2026-09-19T03:15:39.633Z",
+ "localBbox": [
+  9.55,
+  118.55,
+  10.4,
+  119.05
+ ],
+ "phBbox": [
+  4,
+  114,
+  22.5,
+  129.5
+ ],
+ "localElements": [
+  {
+   "type": "node",
+   "id": 2417759945,
+   "lat": 9.6867103,
+   "lon": 118.74962,
+   "tags": {
+    "harbour": "yes",
+    "name": "Mangingisda Pier",
+    "seamark:harbour:category": "marina",
+    "seamark:type": "harbour"
+   }
+  },
+  {
+   "type": "node",
+   "id": 6919389748,
+   "lat": 9.7300964,
+   "lon": 118.7324271,
+   "tags": {
+    "addr:city": "Puerto Princesa",
+    "addr:province": "Palawan",
+    "building:material": "concrete",
+    "man_made": "lighthouse",
+    "name": "Tide Pole Lighthouse",
+    "operator": "Puerto Princesa Station, Philippine Coast Guard",
+    "ref:pcg": "PAL-007",
+    "seamark:light:character": "Fl",
+    "seamark:light:colour": "red",
+    "seamark:light:period": "5",
+    "seamark:name": "Tide Pole",
+    "seamark:type": "light_minor",
+    "source": "Philippine Coast Guard, 2019 lighthouse masterlist"
+   }
+  },
+  {
+   "type": "node",
+   "id": 6919451412,
+   "lat": 9.7228633,
+   "lon": 118.7684307,
+   "tags": {
+    "addr:city": "Puerto Princesa",
+    "addr:province": "Palawan",
+    "building:material": "concrete",
+    "man_made": "lighthouse",
+    "name": "Bancao-Bancao Lighthouse",
+    "operator": "Puerto Princesa Station, Philippine Coast Guard",
+    "ref:pcg": "PAL-001",
+    "seamark:light:character": "Fl",
+    "seamark:light:colour": "white",
+    "seamark:light:group": "3",
+    "seamark:light:period": "15",
+    "seamark:name": "Bancao-Bancao",
+    "seamark:type": "light_major",
+    "source": "Philippine Coast Guard, 2019 lighthouse masterlist"
+   }
+  },
+  {
+   "type": "node",
+   "id": 6919604669,
+   "lat": 10.1548577,
+   "lon": 118.764845,
+   "tags": {
+    "addr:city": "Puerto Princesa",
+    "addr:province": "Palawan",
+    "building:material": "glass_reinforced_plastic",
+    "man_made": "lighthouse",
+    "name": "Camungyan Lighthouse",
+    "operator": "Puerto Princesa Station, Philippine Coast Guard",
+    "ref:pcg": "PAL-004",
+    "seamark:light:character": "Fl",
+    "seamark:light:colour": "white",
+    "seamark:light:group": "3",
+    "seamark:light:period": "15",
+    "seamark:name": "Camungyan",
+    "seamark:type": "light_minor",
+    "source": "Philippine Coast Guard, 2019 lighthouse masterlist",
+    "start_date": "1999-06-29"
+   }
+  },
+  {
+   "type": "way",
+   "id": 1415910875,
+   "bounds": {
+    "minlat": 9.8440727,
+    "minlon": 118.745913,
+    "maxlat": 9.8442237,
+    "maxlon": 118.7460958
+   },
+   "nodes": [
+    1216053265,
+    13011880268,
+    773416850,
+    13011880267,
+    1216053265
+   ],
+   "geometry": [
+    {
+     "lat": 9.8440727,
+     "lon": 118.7459409
+    },
+    {
+     "lat": 9.8441797,
+     "lon": 118.745913
+    },
+    {
+     "lat": 9.8442237,
+     "lon": 118.7460612
+    },
+    {
+     "lat": 9.8441114,
+     "lon": 118.7460958
+    },
+    {
+     "lat": 9.8440727,
+     "lon": 118.7459409
+    }
+   ],
+   "tags": {
+    "addr:city": "Puerto Princesa",
+    "addr:postcode": "5300",
+    "addr:village": "Santa Lourdes",
+    "amenity": "coast_guard",
+    "contact:facebook": "https://www.facebook.com/cgss.honda.bay",
+    "email": "cgsshobay@gmail.com",
+    "emergency": "coast_guard",
+    "mobile": "+63 930 333 2572",
+    "name": "Coast Guard Sub-Station Honda Bay",
+    "office": "government",
+    "operator": "Coast Guard District Palawan",
+    "seamark:type": "coastguard_station"
+   }
+  }
+ ],
+ "localCounts": {
+  "light_minor": 2,
+  "harbour": 1,
+  "light_major": 1,
+  "coastguard_station": 1
+ },
+ "phElements": [
+  {
+   "type": "way",
+   "id": 207904972,
+   "center": {
+    "lat": 22.3483333,
+    "lon": 114.0308333
+   },
+   "nodes": [
+    2181491072,
+    5419720412,
+    1852581723,
+    2187102314,
+    2181491072
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "Ha Pang Fairway",
+    "seamark:national_name": "下棚航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207904973,
+   "center": {
+    "lat": 22.3490333,
+    "lon": 113.9779167
+   },
+   "nodes": [
+    2179747073,
+    1582599469,
+    2181491074,
+    2187102294,
+    2179747069,
+    10201102701,
+    2192703364,
+    1852581780,
+    5419720412,
+    2181491072,
+    2179747072,
+    2179747071,
+    2179747073
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "Castle Peak Fairway",
+    "seamark:national_name": "青山航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207904974,
+   "center": {
+    "lat": 22.335975,
+    "lon": 114.0669
+   },
+   "nodes": [
+    2181491090,
+    2181491088,
+    2181491081,
+    2181491087,
+    2181491089,
+    2181491091,
+    2181491090
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "Kap Shui Mun Fairway",
+    "seamark:national_name": "汲水門航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207904976,
+   "center": {
+    "lat": 22.298475,
+    "lon": 114.0970334
+   },
+   "nodes": [
+    2181491083,
+    2181491087,
+    2181491081,
+    2181491045,
+    2181491046,
+    1582594856,
+    1582591374,
+    2181491083
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "Western Fairway",
+    "seamark:national_name": "西航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207927148,
+   "center": {
+    "lat": 22.2909084,
+    "lon": 114.1126083
+   },
+   "nodes": [
+    2181491056,
+    1852581718,
+    2181491079,
+    1852581720,
+    1582642571,
+    2181491054,
+    2181491056
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "North Green Island Fairway",
+    "seamark:national_name": "青洲北航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207927150,
+   "center": {
+    "lat": 22.2904166,
+    "lon": 114.22495
+   },
+   "nodes": [
+    2181491070,
+    2181491051,
+    2181094112,
+    2181094105,
+    2181491049,
+    2181491064,
+    2181491070
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "Eastern Fairway",
+    "seamark:national_name": "東航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207927153,
+   "center": {
+    "lat": 22.2874917,
+    "lon": 114.12755
+   },
+   "nodes": [
+    2181491048,
+    2181491054,
+    1582642571,
+    1852581725,
+    2173359525,
+    2181491060,
+    2181491055,
+    2181491047,
+    2181491048
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "Southern Fairway",
+    "seamark:national_name": "南航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207927155,
+   "center": {
+    "lat": 22.2937416,
+    "lon": 114.1873583
+   },
+   "nodes": [
+    2181491070,
+    2181491064,
+    2181491063,
+    2181491052,
+    2181491050,
+    2181491058,
+    2181491059,
+    2181491069,
+    2181491070
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "Hung Hom Fairway",
+    "seamark:national_name": "紅磡航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207927157,
+   "center": {
+    "lat": 22.29395,
+    "lon": 114.1541
+   },
+   "nodes": [
+    2181491065,
+    2173359525,
+    2181491060,
+    10002090437,
+    2181491050,
+    2181491058,
+    2181491061,
+    2181491068,
+    2181491067,
+    2181491065
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "Central Fairway",
+    "seamark:national_name": "中航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207927160,
+   "center": {
+    "lat": 22.343475,
+    "lon": 114.0727333
+   },
+   "nodes": [
+    2181491096,
+    2181491093,
+    2181491094,
+    2181491092,
+    2181491087,
+    2181491083,
+    2181491095,
+    2181491102,
+    2181491096
+   ],
+   "tags": {
+    "area": "yes",
+    "name": "馬灣航道 Ma Wan Fairway",
+    "name:en": "Ma Wan Fairway",
+    "name:zh": "馬灣航道",
+    "seamark:name": "Ma Wan Fairway",
+    "seamark:national_name": "馬灣航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 207995689,
+   "center": {
+    "lat": 22.3123583,
+    "lon": 114.1487
+   },
+   "nodes": [
+    2181491067,
+    2181491075,
+    2181491080,
+    2181491085,
+    2181491086,
+    2181491082,
+    2181491076,
+    2181491068,
+    2181491067
+   ],
+   "tags": {
+    "area": "yes",
+    "seamark:name": "Yau Ma Tei Fairway",
+    "seamark:national_name": "油麻地航道",
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 209028349,
+   "center": {
+    "lat": 22.2699791,
+    "lon": 114.0869967
+   },
+   "nodes": [
+    2180967860,
+    2180967868,
+    2180967876,
+    2192703185,
+    2192703183,
+    2188571389,
+    2188571388,
+    2180967860
+   ],
+   "tags": {
+    "seamark:type": "precautionary_area"
+   }
+  },
+  {
+   "type": "way",
+   "id": 866622793,
+   "center": {
+    "lat": 22.1292834,
+    "lon": 114.2256666
+   },
+   "nodes": [
+    8077647459,
+    8077647466,
+    8077647474,
+    8077647471,
+    8077647463,
+    8077647468,
+    8077647476,
+    8077647477,
+    8077647469,
+    8077647460,
+    8077647459
+   ],
+   "tags": {
+    "seamark:type": "precautionary_area"
+   }
+  },
+  {
+   "type": "way",
+   "id": 866622794,
+   "center": {
+    "lat": 22.1184584,
+    "lon": 114.3603916
+   },
+   "nodes": [
+    8077647462,
+    8077647470,
+    8077647478,
+    8077647475,
+    8077647467,
+    8077647461,
+    8077647462
+   ],
+   "tags": {
+    "seamark:type": "precautionary_area"
+   }
+  },
+  {
+   "type": "way",
+   "id": 866622795,
+   "center": {
+    "lat": 22.1207833,
+    "lon": 114.1518416
+   },
+   "nodes": [
+    8077647463,
+    8077647471,
+    8077647472,
+    8077647464,
+    8077647463
+   ],
+   "tags": {
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 866622796,
+   "center": {
+    "lat": 22.1392166,
+    "lon": 114.1518416
+   },
+   "nodes": [
+    8077647465,
+    8077647473,
+    8077647474,
+    8077647466,
+    8077647465
+   ],
+   "tags": {
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 866622797,
+   "center": {
+    "lat": 22.11265,
+    "lon": 114.2988
+   },
+   "nodes": [
+    8077647467,
+    8077647475,
+    8077647476,
+    8077647468,
+    8077647467
+   ],
+   "tags": {
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 866622798,
+   "center": {
+    "lat": 22.1310917,
+    "lon": 114.2988
+   },
+   "nodes": [
+    8077647469,
+    8077647477,
+    8077647478,
+    8077647470,
+    8077647469
+   ],
+   "tags": {
+    "seamark:type": "fairway"
+   }
+  },
+  {
+   "type": "way",
+   "id": 1031960111,
+   "center": {
+    "lat": 6.2801264,
+    "lon": 123.4357583
+   },
+   "nodes": [
+    9510171110,
+    9510171109
+   ],
+   "tags": {
+    "seamark:type": "recommended_traffic_lane",
+    "source": "Republic of the Philippines Dapartment on Transportation – Memorandum Circular No. 2017-002",
+    "start_date": "2017-03-31"
+   }
+  },
+  {
+   "type": "way",
+   "id": 1031960114,
+   "center": {
+    "lat": 6.770575,
+    "lon": 122.3023368
+   },
+   "nodes": [
+    9510171113,
+    9510171114
+   ],
+   "tags": {
+    "seamark:type": "recommended_traffic_lane",
+    "source": "Republic of the Philippines Dapartment on Transportation – Memorandum Circular No. 2017-002",
+    "start_date": "2017-03-31"
+   }
+  },
+  {
+   "type": "way",
+   "id": 1031960119,
+   "center": {
+    "lat": 6.7526903,
+    "lon": 122.289409
+   },
+   "nodes": [
+    9510171111,
+    9510171110
+   ],
+   "tags": {
+    "seamark:type": "recommended_traffic_lane",
+    "source": "Republic of the Philippines Dapartment on Transportation – Memorandum Circular No. 2017-002",
+    "start_date": "2017-03-31"
+   }
+  },
+  {
+   "type": "way",
+   "id": 1031960123,
+   "center": {
+    "lat": 6.3007493,
+    "lon": 123.443809
+   },
+   "nodes": [
+    9510171112,
+    9510171113
+   ],
+   "tags": {
+    "seamark:type": "recommended_traffic_lane",
+    "source": "Republic of the Philippines Dapartment on Transportation – Memorandum Circular No. 2017-002",
+    "start_date": "2017-03-31"
+   }
+  },
+  {
+   "type": "way",
+   "id": 1161997549,
+   "center": {
+    "lat": 22.1759666,
+    "lon": 114.1974584
+   },
+   "nodes": [
+    2987327747,
+    10806928247,
+    10806928248,
+    10806928249,
+    2987327747
+   ],
+   "tags": {
+    "seamark:type": "precautionary_area"
+   }
+  },
+  {
+   "type": "relation",
+   "id": 10599239,
+   "center": {
+    "lat": 22.3112084,
+    "lon": 114.1159167
+   },
+   "members": [
+    {
+     "type": "way",
+     "ref": 207927145,
+     "role": "outer"
+    },
+    {
+     "type": "way",
+     "ref": 764189225,
+     "role": "outer"
+    }
+   ],
+   "tags": {
+    "area": "yes",
+    "name": "北航道 Northern Fairway",
+    "name:en": "Northern Fairway",
+    "name:zh": "北航道",
+    "seamark:name": "Northern Fairway",
+    "seamark:national_name": "北航道",
+    "seamark:type": "fairway",
+    "type": "multipolygon"
+   }
+  }
+ ],
+ "phCounts": {
+  "fairway": 16,
+  "precautionary_area": 4,
+  "recommended_traffic_lane": 4
+ }
+}

@@ -54,6 +54,41 @@ export function MapPage() {
 
   const [resetToken, setResetToken] = useState(0)
   const [focusToken, setFocusToken] = useState(0)
+  // Shipping-channel overlay (PCG PPTSS lines): OFF by default — a secondary
+  // safety reference that must not compete with the advisory zones. Local UI
+  // state on purpose: not app data, nothing to persist or sync.
+  const [shippingLanesVisible, setShippingLanesVisible] = useState(false)
+  // One-time discoverability hint for the overlay toggle: the ship glyph is
+  // icon-only, and "PCG shipping lane" is not guessable from an icon. Shown
+  // once (localStorage-gated), auto-dismisses, and toggling the layer
+  // dismisses it too.
+  const [shippingHintOpen, setShippingHintOpen] = useState(() => {
+    try {
+      return localStorage.getItem('red-tide-ppc:hint:shipping:v1') !== 'dismissed'
+    } catch {
+      return false // no storage — stay quiet rather than nag every load
+    }
+  })
+  useEffect(() => {
+    if (!shippingHintOpen) return
+    const timer = window.setTimeout(() => dismissShippingHint(), 9_000)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shippingHintOpen])
+
+  function dismissShippingHint() {
+    setShippingHintOpen(false)
+    try {
+      localStorage.setItem('red-tide-ppc:hint:shipping:v1', 'dismissed')
+    } catch {
+      // private mode / storage disabled — dismissal just won't persist
+    }
+  }
+
+  function toggleShippingLanes() {
+    setShippingLanesVisible((visible) => !visible)
+    if (shippingHintOpen) dismissShippingHint()
+  }
 
   // One controller for the sheet and the map underlay: they read the same
   // progress value, so they can never disagree mid-drag.
@@ -119,6 +154,7 @@ export function MapPage() {
           resetToken={resetToken}
           focusZoneId={selectedZoneId}
           focusToken={focusToken}
+          shippingLanesVisible={shippingLanesVisible}
           onSelectZone={selectZone}
           onReport={openReportForm}
         />
@@ -176,6 +212,57 @@ export function MapPage() {
           right={
             <>
               <DemoBanner variant="chip" />
+              <span className="relative inline-flex">
+                <button
+                  type="button"
+                  onClick={toggleShippingLanes}
+                  aria-pressed={shippingLanesVisible}
+                  aria-label="Shipping channel overlay — show or hide the port traffic lanes"
+                  title="Shipping channel overlay (PCG TSS) — where boats meet ship traffic"
+                  className={`grid h-8 min-w-8 place-items-center rounded-md border px-1.5 backdrop-blur-md transition-colors active:scale-95 ${
+                    shippingLanesVisible
+                      ? 'border-[#2e7cd6] bg-[#2e7cd6]/15 text-[#9cc4f7]'
+                      : 'border-line bg-ink-2/85 text-paper/75 hover:border-accent/40 hover:text-accent'
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    {/* ship: hull + cargo + waterline */}
+                    <path d="M3 17c1.5 1.6 3 1.6 4.5 0s3-1.6 4.5 0 3 1.6 4.5 0 3-1.6 4.5 0" />
+                    <path d="M5 13.5 6 8h12l1 5.5" />
+                    <path d="M12 8V5m-3 3V6h6v2" />
+                  </svg>
+                </button>
+                {shippingHintOpen && (
+                  <span
+                    role="status"
+                    className="absolute right-0 top-[calc(100%+10px)] z-[1015] w-max max-w-[240px] rounded-lg border border-line bg-ink-2/92 px-3 py-2 text-left shadow-lg backdrop-blur-md"
+                  >
+                    <span className="block font-display text-[11px] font-semibold leading-snug tracking-[0.02em] text-[#9cc4f7]">
+                      New: shipping lane lines
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-snug text-paper/75">
+                      Where ships transit the port approach — worth knowing before
+                      you drift.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={dismissShippingHint}
+                      className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] text-paper/60 underline-offset-2 hover:text-paper"
+                    >
+                      Got it
+                    </button>
+                  </span>
+                )}
+              </span>
               <button
                 type="button"
                 onClick={() => setResetToken((token) => token + 1)}

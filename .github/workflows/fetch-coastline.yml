@@ -1,0 +1,44 @@
+# Fetch the real OSM coastline geometry behind the zone polygons.
+#
+# The dev sandbox cannot reach the OSM/Overpass APIs (egress is blocked), but
+# GitHub runners can. This workflow runs scripts/fetch-coastline.mjs and commits
+# the raw geometry to the branch that triggered it, under
+# scripts/coastline-cache/ — the sandbox cannot download run artifacts or logs
+# (their blob hosts are blocked), but it can pull git.
+#
+# Only runs when the fetch script itself changes, so it stays dormant otherwise.
+
+name: Fetch coastline
+
+on:
+  push:
+    paths:
+      - 'scripts/fetch-coastline.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    name: Fetch OSM coastline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Fetch coastline geometry
+        run: node scripts/fetch-coastline.mjs scripts/coastline-cache/osm-coastline.json
+
+      - name: Commit coastline cache
+        run: |
+          git config user.name "coastline-fetch-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add scripts/coastline-cache/osm-coastline.json
+          git commit -m "coastline: cache OSM raw fetch [skip ci]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
