@@ -6,7 +6,8 @@
  * hand-traced inlet from the reference image can be identified against
  * rendered shoreline + the pp-bay polygon + offshore islets.
  *
- * Navigation core cloned from scripts/pp-bay-extension-shots.mjs; no zone-row
+ * Navigation core adapted from scripts/pp-bay-extension-shots.mjs (puppeteer;
+ * CI runners download the bundled Chromium on `npm ci`). No zone-row
  * selection (the polygon renders regardless) — frame + shoot only.
  *
  * Env:
@@ -15,9 +16,10 @@
  *   PREFIX        filename prefix (default "trace-id")
  *   REQUIRE_TILES fail unless every shot loaded tiles from network (default 1)
  */
-import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+import puppeteer from 'puppeteer';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://127.0.0.1:4175';
 const OUT_DIR = process.env.OUT_DIR ?? 'docs/inlet-shots';
@@ -35,6 +37,34 @@ const TARGETS = [
   { name: 'north', center: [9.795, 118.71], zoom: 15 },
   { name: 'wide', center: [9.78, 118.715], zoom: 13 },
 ];
+
+async function launch() {
+  try {
+    return await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+  } catch (firstErr) {
+    console.log(`bundled Chromium unavailable (${firstErr.message.split('\n')[0]}); trying @sparticuz/chromium`);
+    const require = createRequire(import.meta.url);
+    const mod = require('@sparticuz/chromium');
+    const chromium = mod.default ?? mod;
+    const inflate = mod.inflate ?? chromium.inflate;
+    const executablePath = await chromium.executablePath();
+    let libDir = '/tmp/al2023/lib';
+    try {
+      if (!fs.existsSync(libDir)) {
+        libDir = path.join(await inflate('node_modules/@sparticuz/chromium/bin/al2023.tar.br'), 'lib');
+      }
+    } catch { /* launch fails loudly below if libs are missing */ }
+    return puppeteer.launch({
+      executablePath,
+      headless: true,
+      env: { ...process.env, LD_LIBRARY_PATH: `${libDir}:${process.env.LD_LIBRARY_PATH ?? ''}` },
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+  }
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -73,8 +103,8 @@ async function frameTarget(page, target) {
   );
   await page.waitForFunction(
     (prev) => (document.querySelector('.leaflet-map-pane')?.style.transform ?? '') !== prev,
-    before,
     { timeout: 15000 },
+    before,
   ).catch(() => {});
   await sleep(1200);
 }
@@ -82,12 +112,10 @@ async function frameTarget(page, target) {
 async function waitForZones(page) {
   await page.waitForFunction(
     () => /SAFE\s+\d+/i.test(document.body.textContent ?? ''),
-    null,
     { timeout: 60000 },
   );
   const ok = await page.waitForFunction(
     () => document.querySelectorAll('.leaflet-overlay-pane path').length > 0,
-    null,
     { timeout: 60000 },
   ).then(() => true).catch(() => false);
   if (!ok) throw new Error('zone paths never rendered');
@@ -110,8 +138,9 @@ async function settleTiles(page, positions = [0, 1, 2]) {
 }
 
 async function run() {
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  const browser = await launch();
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1280, height: 800 });
   const failures = [];
   try {
     const netTiles = new Set();
