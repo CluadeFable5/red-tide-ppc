@@ -1,21 +1,13 @@
-import { useCallback, useEffect, useRef } from 'react'
-import {
-  motion,
-  useMotionValue,
-  useMotionValueEvent,
-  useReducedMotion,
-  useTransform,
-} from 'motion/react'
-import type { MotionValue } from 'motion/react'
+import { useCallback } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
 import {
   advisoryShare,
   formatPercent,
   tideBaselinePath,
   tideWavePath,
 } from '../motion/readouts'
-import { isDragTail } from '../motion/sheetAnchors'
-import { drawerWindowWidth } from '../motion/sidePanelAnchors'
-import { useSidePanel } from '../motion/useSidePanel'
+import { isDragTail } from '../motion/sidePanelAnchors'
+import { useClipWindowWidth, useSidePanel } from '../motion/useSidePanel'
 
 /**
  * The advisory-signal gauge card as a collapsible side drawer.
@@ -23,8 +15,19 @@ import { useSidePanel } from '../motion/useSidePanel'
  * WHAT IT IS
  * ----------
  * The "Advisory signal" card (the 0% gauge + 0/6 ADV · 0 PEND readout) sits
- * top-left under the fixed status key. On a phone it permanently covers that
- * corner of the map, so it tucks away left, leaving only a grab tab.
+ * in the top-right control column, between the zoom buttons and the zone
+ * drawer's tab. On a phone it permanently covers that corner of the map, so
+ * it tucks away into the RIGHT edge, leaving only a grab tab.
+ *
+ * The drawer moved from the left edge to the right edge in the pass that
+ * replaced the bottom sheet with the zone drawer: the screenshot markup
+ * pulled the collapsed grab tab to the top-right, and both drawer tabs now
+ * live in one column — mirrored, the tab hugs the window's INNER (left) edge
+ * and the card slides in and out of the right screen edge. What did NOT move
+ * is the clip architecture below, which is the part that was verified and
+ * must not regress. Its orientation is an input, not a rewrite: the same
+ * hook, the same one-motion-value-drives-track-and-window invariant, the
+ * same tap-after-drag guard.
  *
  * This is the drawer half of the split from the old merged `StatusPanel`,
  * which incorrectly swept the pills row into the swipeable panel and shipped
@@ -57,15 +60,27 @@ import { useSidePanel } from '../motion/useSidePanel'
  *   3. The window width is clamped at both ends (`drawerWindowWidth`), so
  *      elastic overshoot past either anchor still clips cleanly.
  *
+ * RIGHT-EDGE GEOMETRY — the mirror of the original left drawer
+ * ------------------------------------------------------------
+ * The row is [tab][window], right-aligned inside the control column, so the
+ * window's right edge is pinned and its LEFT edge is the moving cut. The
+ * track is `justify-end`-aligned inside the window (hugging the pinned
+ * edge), and `offsets.collapsed` is `+cardWidth`: the track slides right,
+ * into the edge, to tuck away. `drawerWindowWidth` mirrors to `width - x`,
+ * the elastic ends swap, the chevron points the way the panel will move, and
+ * ArrowRight collapses / ArrowLeft expands — every direction a user can
+ * perceive flips, none of the maths does (see `sidePanelAnchors.ts`, where
+ * the flick map is derived from the offsets themselves).
+ *
  * States:
  *   open:      card fully visible (the resting position).
- *   collapsed: window at width 0; only the 32px grab tab shows. The collapsed
+ *   collapsed: window at width 0; only the 44px grab tab shows. The collapsed
  *     drawer captures no pointer events, so pan/zoom/tap-zones work where the
  *     card used to sit.
  *
  * Animation:
- *   Same spring as the zone sheet (stiffness 420, damping 34, mass 0.85) for
- *   the snap, so the two gestures feel like one physics system. The card
+ *   The same spring everywhere (stiffness 420, damping 34, mass 0.85), so
+ *   this drawer and the zone drawer feel like one physics system. The card
  *   follows the finger 1:1 mid-drag; on release, velocity is projected
  *   forward (0.2s) and a flick always lands in the direction it was thrown.
  *   For reduced-motion the track jumps instantly (`offsetX.jump`), and the
@@ -79,25 +94,18 @@ import { useSidePanel } from '../motion/useSidePanel'
  *
  * Non-drag path (accessibility is load-bearing, not optional):
  *   - the grab tab is a real `<button>`: tap / Enter / Space toggles;
- *   - ArrowLeft collapses and ArrowRight expands when the tab is focused, so
- *     keyboard users get the same directional control as swipe users;
+ *   - ArrowRight collapses and ArrowLeft expands when the tab is focused —
+ *     the directional pair for a RIGHT-edge drawer, so keyboard users get
+ *     the same directional control as swipe users;
  *   - `aria-expanded` + `aria-controls` expose the state to assistive tech.
  *   - on desktop/non-touch there is no separate path to learn: the same tab
  *     is a click toggle and a mouse-drag handle. No swipe simulation.
- *
- * Chrome fade:
- *   Like the old floating chrome, the whole drawer (tab included) fades out
- *   as the sheet rises — at mid/full the sheet is the readout and a floating
- *   tab would be a stray affordance. While faded, the tab also drops its
- *   pointer events, so invisible chrome can never swallow a map gesture.
  */
 
 export interface AdvisoryDrawerProps {
   advisory: number
   zones: number
   pending: number
-  /** Driven by the sheet's progress; the drawer fades, it does not shrink. */
-  chromeOpacity: MotionValue<number>
 }
 
 const TAB_LABEL: Record<'open' | 'collapsed', string> = {
@@ -105,38 +113,15 @@ const TAB_LABEL: Record<'open' | 'collapsed', string> = {
   collapsed: 'Expand advisory signal panel',
 }
 
-export function AdvisoryDrawer({
-  advisory,
-  zones,
-  pending,
-  chromeOpacity,
-}: AdvisoryDrawerProps) {
-  const panel = useSidePanel('open')
+export function AdvisoryDrawer({ advisory, zones, pending }: AdvisoryDrawerProps) {
+  const panel = useSidePanel('open', { edge: 'right' })
   const reduceMotion = useReducedMotion()
   const open = panel.state === 'open'
   const tabLabel = TAB_LABEL[panel.state]
 
   // The clip window's width, driven by the same motion value as the track's
-  // position. A subscription rather than `useTransform` on purpose: the card
-  // width can change independently of the offset (font load, rotation), and
-  // this keeps the width correct through both without depending on how the
-  // transform helper caches its closure.
-  const cardWidth = -panel.offsets.collapsed
-  const windowWidth = useMotionValue(cardWidth)
-  const cardWidthRef = useRef(cardWidth)
-  cardWidthRef.current = cardWidth
-  useMotionValueEvent(panel.offsetX, 'change', (x) => {
-    windowWidth.set(drawerWindowWidth(cardWidthRef.current, x))
-  })
-  useEffect(() => {
-    windowWidth.set(drawerWindowWidth(cardWidth, panel.offsetX.get()))
-  }, [cardWidth, panel.offsetX, windowWidth])
-
-  // The tab re-enables pointer events only while the chrome is actually
-  // visible — invisible chrome must never eat map gestures.
-  const tabPointerEvents = useTransform(chromeOpacity, (value): string =>
-    value < 0.1 ? 'none' : 'auto',
-  )
+  // position (shared hook — see `useClipWindowWidth` in useSidePanel.ts).
+  const windowWidth = useClipWindowWidth(panel.offsetX, panel.panelWidth, panel.edge)
 
   const handleTabClick = useCallback(
     (event: React.MouseEvent) => {
@@ -149,11 +134,13 @@ export function AdvisoryDrawer({
   const handleTabKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
       // Enter/Space already toggle via the native button click; arrows give
-      // keyboard users the same directional control swipe users have.
-      if (event.key === 'ArrowLeft') {
+      // keyboard users the same directional control swipe users have. This
+      // is a RIGHT-edge drawer: Right tucks into the edge, Left opens out of
+      // it.
+      if (event.key === 'ArrowRight') {
         event.preventDefault()
         panel.goTo('collapsed')
-      } else if (event.key === 'ArrowRight') {
+      } else if (event.key === 'ArrowLeft') {
         event.preventDefault()
         panel.goTo('open')
       }
@@ -162,96 +149,95 @@ export function AdvisoryDrawer({
   )
 
   return (
-    <motion.div
-      style={{ opacity: chromeOpacity }}
-      className="pointer-events-none absolute left-3 top-[7rem] z-[1010] mt-[env(safe-area-inset-top)]"
+    <div
+      className="pointer-events-none flex items-stretch justify-end gap-1.5"
       role="region"
       aria-label="Advisory signal"
       data-testid="advisory-drawer"
       data-state={panel.state}
       data-dragging={panel.dragging || undefined}
     >
-      <div className="flex items-stretch gap-1.5">
-        {/* --- Clip window -------------------------------------------------
-            `overflow-hidden` is load-bearing: this is what clips the card
-            mid-drag. Its width tracks the track position 1:1 (see above), so
-            the visible card edge is always a clean cut — never floating
-            text. `shrink-0` keeps flexbox from squeezing the window below
-            the width the motion value sets. */}
-        <motion.div
-          style={{ width: windowWidth }}
-          className="shrink-0 overflow-hidden"
-          data-testid="advisory-drawer-window"
+      {/* --- Grab tab ------------------------------------------------------
+          The vertical analogue of the sheet's handle: same pill-grabber
+          language, rotated 90°. A static sibling of the window — it hugs
+          the window's INNER edge as the window shrinks, and it is the 44px
+          that stays on screen when collapsed (touch hit-area floor). The
+          drawer's only drag surface, `touch-action: none`. */}
+      <motion.button
+        type="button"
+        onPointerDown={panel.startDrag}
+        onClick={handleTabClick}
+        onKeyDown={handleTabKeyDown}
+        aria-expanded={open}
+        aria-controls="advisory-drawer-body"
+        aria-label={tabLabel}
+        title={tabLabel}
+        data-testid="advisory-drawer-tab"
+        className="pointer-events-auto flex w-11 shrink-0 select-none flex-col items-center justify-center gap-2 self-start rounded-lg border border-line bg-ink-2/88 py-3 backdrop-blur-md transition-colors [touch-action:none] hover:border-accent/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      >
+        <motion.svg
+          viewBox="0 0 24 24"
+          className="h-3.5 w-3.5 text-paper/70"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          aria-hidden="true"
+          // ◀ when collapsed (opens leftward), ▶ when open (tucks rightward).
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : { type: 'spring', stiffness: 420, damping: 34 }
+          }
         >
-          {/* --- Card track ------------------------------------------------
-              The only translated element in the drawer. `w-max` is
-              load-bearing: a block child would shrink to the window's width
-              and corrupt the width measurement (and re-pin the drawer
-              mid-drag); `max-content` keeps the track at the card's own
-              width whatever the window is doing. */}
-          <motion.div
-            ref={panel.panelRef}
-            id="advisory-drawer-body"
-            style={{ x: panel.offsetX }}
-            drag="x"
-            dragListener={false}
-            dragControls={panel.dragControls}
-            dragConstraints={{ left: panel.offsets.collapsed, right: panel.offsets.open }}
-            // Asymmetric elasticity: pulling right past open barely gives
-            // (open is home), pulling left past collapsed gives a little —
-            // the card straining at the window edge.
-            dragElastic={{ left: 0.05, right: 0.02 }}
-            dragMomentum={false}
-            onDragStart={panel.onDragStart}
-            onDragEnd={(_event, info) => panel.onDragEnd(info)}
-            className="w-max"
-          >
-            <AdvisoryGauge advisory={advisory} zones={zones} pending={pending} />
-          </motion.div>
-        </motion.div>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
+        </motion.svg>
+        <span
+          aria-hidden="true"
+          className="block h-8 w-1 rounded-full bg-line-soft"
+        />
+      </motion.button>
 
-        {/* --- Grab tab ----------------------------------------------------
-            The vertical analogue of the sheet's handle: same pill-grabber
-            language, rotated 90°. A static sibling of the window — it hugs
-            the window's right edge as the window shrinks, and it is the 32px
-            that stays on screen when collapsed (`w-8`). The drawer's only
-            drag surface, `touch-action: none`. */}
-        <motion.button
-          type="button"
-          style={{ pointerEvents: tabPointerEvents as unknown as 'auto' }}
-          onPointerDown={panel.startDrag}
-          onClick={handleTabClick}
-          onKeyDown={handleTabKeyDown}
-          aria-expanded={open}
-          aria-controls="advisory-drawer-body"
-          aria-label={tabLabel}
-          title={tabLabel}
-          data-testid="advisory-drawer-tab"
-          className="flex w-8 shrink-0 select-none flex-col items-center justify-center gap-2 rounded-lg border border-line bg-ink-2/88 py-3 backdrop-blur-md transition-colors [touch-action:none] hover:border-accent/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+      {/* --- Clip window ---------------------------------------------------
+          `overflow-hidden` is load-bearing: this is what clips the card
+          mid-drag. Its width tracks the track position 1:1 (see above), so
+          the visible card edge is always a clean cut — never floating
+          text. `shrink-0` keeps flexbox from squeezing the window below the
+          width the motion value sets; `flex justify-end` pins the track to
+          the window's RIGHT (anchored) edge, so the LEFT edge is the cut
+          that moves with the window's width. */}
+      <motion.div
+        style={{ width: windowWidth }}
+        className="flex shrink-0 justify-end overflow-hidden"
+        data-testid="advisory-drawer-window"
+      >
+        {/* --- Card track --------------------------------------------------
+            The only translated element in the drawer. `w-max` is
+            load-bearing: a block child would shrink to the window's width
+            and corrupt the width measurement (and re-pin the drawer
+            mid-drag); `max-content` keeps the track at the card's own
+            width whatever the window is doing. */}
+        <motion.div
+          ref={panel.panelRef}
+          id="advisory-drawer-body"
+          style={{ x: panel.offsetX }}
+          drag="x"
+          dragListener={false}
+          dragControls={panel.dragControls}
+          dragConstraints={panel.constraints}
+          // Asymmetric elasticity: pulling left past open barely gives
+          // (open is home), pulling right past collapsed gives a little —
+          // the card straining at the window edge.
+          dragElastic={{ left: 0.02, right: 0.05 }}
+          dragMomentum={false}
+          onDragStart={panel.onDragStart}
+          onDragEnd={(_event, info) => panel.onDragEnd(info)}
+          className="w-max"
         >
-          <motion.svg
-            viewBox="0 0 24 24"
-            className="h-3.5 w-3.5 text-paper/70"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            aria-hidden="true"
-            animate={{ rotate: open ? 0 : 180 }}
-            transition={
-              reduceMotion
-                ? { duration: 0 }
-                : { type: 'spring', stiffness: 420, damping: 34 }
-            }
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
-          </motion.svg>
-          <span
-            aria-hidden="true"
-            className="block h-8 w-1 rounded-full bg-line-soft"
-          />
-        </motion.button>
-      </div>
-    </motion.div>
+          <AdvisoryGauge advisory={advisory} zones={zones} pending={pending} />
+        </motion.div>
+      </motion.div>
+    </div>
   )
 }
 

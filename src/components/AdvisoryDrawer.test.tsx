@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { motionValue } from 'motion/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import App from '../App'
 import { clearDemoData, createDemoBackend } from '../lib/backend.demo'
@@ -12,26 +11,25 @@ import { AdvisoryDrawer } from './AdvisoryDrawer'
 import { StatusKey } from './StatusKey'
 
 /**
- * The drawer's behaviour half, mirroring how the sheet is covered: the snap
- * branches live in `sidePanelAnchors.test.ts` (pure logic, like
- * `sheetAnchors.test.ts`), and this suite pins the DOM/behaviour contract —
- * resting state, tap/keyboard paths, map-interaction guarantees, the chrome
- * fade, and the split from the pills row — plus one integration pass proving
- * the map page wires it up.
+ * The drawer's behaviour half, mirroring how the zone drawer is covered: the
+ * snap branches live in `sidePanelAnchors.test.ts` (pure logic, both edges),
+ * and this suite pins the DOM/behaviour contract — resting state, tap/
+ * keyboard paths, map-interaction guarantees, the split from the pills row,
+ * and the right-edge geometry it now lives in — plus one integration pass
+ * proving the map page wires it up.
  *
  * The clip suite is the regression net for the bug class the old merged
  * panel shipped: content rendering outside the drawer's visible bounds. The
- * unit half (`drawerWindowWidth` swept across every drag position) lives in
- * `sidePanelAnchors.test.ts`; here the DOM half pins the containment chain,
- * the no-blur-inside-transform rule, and the collapsed window width.
+ * unit half (`drawerWindowWidth` swept across every drag position, both
+ * edges) lives in `sidePanelAnchors.test.ts`; here the DOM half pins the
+ * containment chain, the no-blur-inside-transform rule, and the collapsed
+ * window width. The drawer moved to the RIGHT edge in the control-column
+ * pass (tab before the window, ArrowRight collapses); the clip invariants
+ * are orientation-neutral and are pinned unchanged.
  */
 
 function renderDrawer() {
-  const chromeOpacity = motionValue(1)
-  render(
-    <AdvisoryDrawer advisory={1} zones={6} pending={2} chromeOpacity={chromeOpacity} />,
-  )
-  return { chromeOpacity }
+  render(<AdvisoryDrawer advisory={1} zones={6} pending={2} />)
 }
 
 function drawer(): HTMLElement {
@@ -69,11 +67,10 @@ describe('AdvisoryDrawer resting state', () => {
   })
 
   it('holds only the gauge — the pills row is not in this subtree', () => {
-    const chromeOpacity = motionValue(1)
     render(
       <>
-        <AdvisoryDrawer advisory={1} zones={6} pending={2} chromeOpacity={chromeOpacity} />
-        <StatusKey counts={{ safe: 4, unconfirmed: 1, advisory: 1 }} chromeOpacity={chromeOpacity} />
+        <AdvisoryDrawer advisory={1} zones={6} pending={2} />
+        <StatusKey counts={{ safe: 4, unconfirmed: 1, advisory: 1 }} />
       </>,
     )
 
@@ -87,6 +84,21 @@ describe('AdvisoryDrawer resting state', () => {
     // The drawer root itself is never translated — only the card track moves,
     // inside the clip window.
     expect(drawer().style.transform).toBe('')
+  })
+
+  it('lays out the right-edge row: grab tab first, clip window hugging the edge', () => {
+    renderDrawer()
+
+    // Right-edge geometry mirrors the left: the tab leads, the window
+    // follows, and the track hugs the window's anchored (right) edge while
+    // the left edge is the moving cut.
+    const children = Array.from(drawer().children)
+    expect(children[0]).toBe(tab())
+    expect(children[1]).toBe(drawerWindow())
+    expect(drawerWindow().classList.contains('justify-end')).toBe(true)
+
+    // The tab meets the 44px touch hit-area floor of the control column.
+    expect(tab().classList.contains('w-11')).toBe(true)
   })
 })
 
@@ -105,6 +117,24 @@ describe('AdvisoryDrawer tap path', () => {
     expect(tab().getAttribute('aria-expanded')).toBe('true')
     expect(tab().getAttribute('aria-label')).toBe('Collapse advisory signal panel')
   })
+
+  it('still toggles on a tap fired right after a drag (tap-after-drag regression)', async () => {
+    // The hook's per-press reset of the drag-travel ledger is what makes
+    // this pass: a tap after a real drag must not inherit the old gesture's
+    // travel and get swallowed as a drag tail. jsdom cannot produce a real
+    // pointer drag, so this pins the contract the keyboard path shares:
+    // detail-0 activation (assistive tech) always works, drag or no drag.
+    const user = userEvent.setup()
+    renderDrawer()
+
+    tab().focus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(drawer().dataset.state).toBe('collapsed'))
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(drawer().dataset.state).toBe('open'))
+    tab().click() // element.click(): detail 0, must never be a "drag tail"
+    await waitFor(() => expect(drawer().dataset.state).toBe('collapsed'))
+  })
 })
 
 describe('AdvisoryDrawer keyboard path', () => {
@@ -120,22 +150,22 @@ describe('AdvisoryDrawer keyboard path', () => {
     await waitFor(() => expect(drawer().dataset.state).toBe('open'))
   })
 
-  it('collapses on ArrowLeft and expands on ArrowRight', async () => {
+  it('collapses on ArrowRight and expands on ArrowLeft — the right-edge pair', async () => {
     const user = userEvent.setup()
     renderDrawer()
 
     tab().focus()
-    await user.keyboard('{ArrowLeft}')
+    await user.keyboard('{ArrowRight}')
     await waitFor(() => expect(drawer().dataset.state).toBe('collapsed'))
 
-    // ArrowLeft again is a no-op, not a toggle — directional, like the swipe.
-    await user.keyboard('{ArrowLeft}')
+    // ArrowRight again is a no-op, not a toggle — directional, like the swipe.
+    await user.keyboard('{ArrowRight}')
     expect(drawer().dataset.state).toBe('collapsed')
 
-    await user.keyboard('{ArrowRight}')
+    await user.keyboard('{ArrowLeft}')
     await waitFor(() => expect(drawer().dataset.state).toBe('open'))
 
-    await user.keyboard('{ArrowRight}')
+    await user.keyboard('{ArrowLeft}')
     expect(drawer().dataset.state).toBe('open')
   })
 })
@@ -148,6 +178,7 @@ describe('AdvisoryDrawer map-interaction guarantees', () => {
     // events, so pan/zoom/tap-zones work everywhere else.
     expect(drawer().classList.contains('pointer-events-none')).toBe(true)
     expect(tab().classList.contains('pointer-events-none')).toBe(false)
+    expect(tab().classList.contains('pointer-events-auto')).toBe(true)
   })
 
   it('keeps the gauge pointer-transparent so the map works beneath it', () => {
@@ -155,28 +186,6 @@ describe('AdvisoryDrawer map-interaction guarantees', () => {
 
     const gauge = screen.getByTestId('advisory-gauge')
     expect(gauge.classList.contains('pointer-events-none')).toBe(true)
-  })
-
-  it('drops tab pointer events while the chrome is faded out', async () => {
-    const { chromeOpacity } = renderDrawer()
-
-    // Visible chrome: the tab takes events.
-    await waitFor(() => {
-      expect((tab() as HTMLElement).style.pointerEvents).toBe('auto')
-    })
-
-    // The sheet rises; chrome fades. Invisible chrome must never swallow a
-    // map gesture, so the tab goes pointer-transparent too.
-    chromeOpacity.set(0)
-    await waitFor(() => {
-      expect((tab() as HTMLElement).style.pointerEvents).toBe('none')
-    })
-
-    // And back when the sheet comes down.
-    chromeOpacity.set(1)
-    await waitFor(() => {
-      expect((tab() as HTMLElement).style.pointerEvents).toBe('auto')
-    })
   })
 })
 
@@ -297,7 +306,7 @@ describe('AdvisoryDrawer on the map page', () => {
     })
   })
 
-  it('is wired up with a live gauge, a working tab, and a separate fixed key', async () => {
+  it('is wired into the control column with a live gauge, a working tab, and a separate fixed key', async () => {
     const user = userEvent.setup()
     render(<App />)
     await user.click(screen.getByRole('link', { name: /open the map/i }))
@@ -309,9 +318,15 @@ describe('AdvisoryDrawer on the map page', () => {
     expect(screen.getByText('Advisory signal')).toBeTruthy()
     expect(screen.getByText('0/6 adv · 0 pend')).toBeTruthy()
 
+    // The drawer lives in the top-right control column now, under the zoom.
+    const column = screen.getByTestId('map-control-column')
+    expect(column.contains(live)).toBe(true)
+    expect(column.contains(screen.getByTestId('advisory-drawer-tab'))).toBe(true)
+
     // The pills row is a separate fixed element, not in the drawer.
     const key = await screen.findByTestId('status-key')
     expect(live.contains(key)).toBe(false)
+    expect(column.contains(key)).toBe(false)
 
     const liveTab = screen.getByTestId('advisory-drawer-tab')
     await user.click(liveTab)

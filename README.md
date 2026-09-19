@@ -235,8 +235,10 @@ src/
     ReportForm.tsx        # report modal / bottom sheet
     ReportCard.tsx        # one report in the admin queue
     AdminGate.tsx         # passcode screen
-    ZoneSheet.tsx         # three-anchor bottom sheet (peek/mid/full): advisories + zone list,
-                           # left status-accent cards, spring-driven with velocity-aware snap
+    ZoneDrawer.tsx        # right-edge zone drawer (collapsed/open): summary strip + full zone
+                           # list, left status-accent cards, spring-driven with velocity-aware snap
+    AdvisoryDrawer.tsx    # right-edge advisory-signal drawer (gauge card + grab tab)
+    MapControlColumn.tsx  # top-right control column: zoom +/− then both drawer tabs
     StatusPip.tsx         # the status dot (pops on status change)
     Ambient.tsx            # map scanline + registration marks (schematic)
     Header.tsx  StatusPanel.tsx  StatusBadge.tsx  Notice.tsx  DemoBanner.tsx
@@ -250,10 +252,10 @@ src/
     Map.test.tsx           # regression: the zone-path classes in a production render
   motion/
     RouteTransition.tsx   # landing <-> map <-> admin route transition (fade + rise; see docs §19)
-    sheetAnchors.ts       # peek/mid/full maths, snap velocity projection, underlay +
-                           # header-chrome opacity (pure, tested)
-    readouts.ts           # data-derived sheet copy + gauge wave (pure, tested)
-    useZoneSheet.ts        # sheet position/anchors + underlay + header motion values
+    sidePanelAnchors.ts   # drawer snap maths: offsets, velocity projection, flick gating,
+                           # plus isDragTail (pure, tested)
+    readouts.ts           # data-derived drawer copy + gauge wave (pure, tested)
+    useSidePanel.ts       # drawer position/states + clip-window motion values
   styles/
     statusTheme.ts        # status -> dark-theme colours, classes, map paint
   pages/
@@ -388,14 +390,14 @@ A toggleable **navigation-hazard layer** under the advisory zones: the boundary 
 npm test
 ```
 
-A growing suite across the following areas (see `docs/` for the browser-verification write-ups behind recent UI passes — bottom sheet redesign, header fade timing, hero full-bleed, coastal polygon accuracy):
+A growing suite across the following areas (see `docs/` for the browser-verification write-ups behind recent UI passes — the side-drawer map layout, header fade timing, hero full-bleed, coastal polygon accuracy):
 
 - **`src/App.test.tsx`** (jsdom) — the whole loop rendered for real: landing → map → tap a zone → report → `/admin` → wrong passcode rejected → correct passcode → Approve → zone turns advisory → public map shows the advisory. Plus the landing page's decrypted hero and live readout, a photo attachment run end to end, and a check that a too-short report submits nothing.
 - **`src/pages/mapPass.test.tsx`** (jsdom) — the six-item visual pass, DOM side: peek row content + hidden body, anchor cycling, the `zone-path` fill ramp, attribution, zoom-control placement, and the full report → approve loop.
 - **`src/components/Map.test.tsx`** (jsdom) — the production `zone-path` regression: the class lands on the path node in a single-pass render (no StrictMode double effect), `--selected` syncs from first mount onward, the fill ramp follows selection, and press feedback lights/releases the polygon.
 - **`src/store.test.ts`** — the real store against the real (in-memory) backend: seeded zones load `safe`; `submitReport` writes a pending report; short descriptions are refused; `approveReport` confirms the report **and** flips the zone to `advisory`; `rejectReport` leaves the zone untouched; manual revert to `safe` works; pending counts are right; the passcode gate only unlocks on an exact match.
 - **`src/lib/firestoreMapping.test.ts`** — the production-only mapping path: Timestamps, GeoPoints, unresolved `serverTimestamp()` values, malformed documents, and polygon values.
-- **`src/motion/sheetAnchors.test.ts`** — the sheet's snap arithmetic: offsets, clamping, velocity projection, flick gating, underlay mapping, and header-chrome fade timing (threshold, easing curve, reduced-motion instant swap).
+- **`src/motion/sidePanelAnchors.test.ts`** — the drawers' snap arithmetic: offsets, clamping, velocity projection, flick gating against a mirrored (left-edge) drawer, and the tap-after-drag guard. (The bottom sheet's equivalent suite retired with the sheet.)
 - **`src/lib/firebase.test.ts`** — `readFirebaseConfig` returns a config only when all five keys are real, so a half-filled `.env` falls back to demo mode instead of half-initialising Firebase.
 - **`src/motion/readouts.test.ts`** — the data-derived copy: peek summary, anchor readout, dominant status, advisory share.
 - **`src/data/zones.test.ts`** — polygon sanity: 4–6 zones all starting `safe`; unique ids plus non-trivial names and descriptions; at least 3 plausible vertices each, all inside the Puerto Princesa box; raw `[lat, lng]` tuples still contain nested arrays (exactly why `scripts/seed.ts` must serialize them) and survive a Firestore round-trip intact; **no two zones overlap** — no interior edge crossings and no vertex of one strictly inside another, while shared boundary vertices and edges are allowed so neighbours can tile; every zone anchored within ~250 m of a real OpenStreetMap coastline node; **every zone a simple polygon (no self-intersections)**; **every point of the landward edge within 20 m of the zone's real OSM coastline run** (`src/data/coastline.ts` — the direct guard against both the "chords cutting across land" and "floating offshore gap" regressions); and `zonesBoundingBox` contains every vertex and `MAP_CENTER`.
@@ -416,7 +418,7 @@ node scripts/final-pass.mjs   # in another — 6/6 checks, exit 0
 
 Tiles and webfonts are allowed to fail (offline sandboxes): every assertion targets the app's own UI. Where a sandbox has no browser at all, the DOM/behaviour half of the same six items runs in CI via `src/pages/mapPass.test.tsx`.
 
-Additional one-off verification scripts (bottom sheet snap points, header fade timing, coastal polygon accuracy, hero full-bleed) live in `scripts/` alongside their write-ups in `docs/` — check there before re-deriving something that has already been measured.
+Additional one-off verification scripts (side-drawer layout, header fade timing, coastal polygon accuracy, hero full-bleed) live in `scripts/` alongside their write-ups in `docs/` — check there before re-deriving something that has already been measured.
 
 ---
 
@@ -433,7 +435,7 @@ Additional one-off verification scripts (bottom sheet snap points, header fade t
 | **Change the photo size limit** | `MAX_PHOTO_BYTES` in `src/lib/image.ts`; mirror the limit in the Cloudinary unsigned upload preset. |
 | **Tighten security** | Update `firestore.rules` and the Cloudinary unsigned preset restrictions. Replacing the passcode means adding Firebase Auth and gating `Admin.tsx` on it. |
 | **Add a new admin action** | Add the action to `src/store.ts` (all datastore calls live there) and call it from `src/pages/Admin.tsx`. |
-| **Adjust the bottom sheet's snap points or feel** | `src/motion/sheetAnchors.ts` (detent ratios, spring constants, header-fade threshold) — pure and unit-tested, change here before touching `ZoneSheet.tsx`. |
+| **Adjust a drawer's snap feel** | `src/motion/sidePanelAnchors.ts` (projection time, flick velocity, spring constants) — pure and unit-tested, change here before touching `ZoneDrawer.tsx` / `AdvisoryDrawer.tsx`. |
 
 ---
 
