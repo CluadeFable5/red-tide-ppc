@@ -4,6 +4,7 @@ import {
   normalizePolygon,
   toFirestorePolygon,
 } from '../lib/firestoreMapping'
+import { COASTLINE_RUNS } from './coastline'
 import { MAP_CENTER, SEED_ZONES, zonesBoundingBox } from './zones'
 
 /**
@@ -110,6 +111,112 @@ describe('SEED_ZONES', () => {
       ).toBeLessThan(250)
     }
   })
+
+  it('draws each zone as a simple polygon (no self-intersections)', () => {
+    // A band that doubles back over itself renders as a jagged blade and
+    // breaks area/containment reasoning. Adjacent-edge sharing and shared
+    // boundary vertices are fine; proper crossings are not.
+    for (const zone of SEED_ZONES) {
+      const ring = zone.polygon
+      const n = ring.length
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          if (j === i + 1 || (i === 0 && j === n - 1)) continue
+          const crosses = segmentsCross(
+            ring[i],
+            ring[(i + 1) % n],
+            ring[j],
+            ring[(j + 1) % n],
+          )
+          expect(
+            crosses,
+            `${zone.id} edge ${i} crosses edge ${j} — polygon is not simple`,
+          ).toBe(false)
+        }
+      }
+    }
+  })
+
+  it('keeps every landward edge within 20 m of the real OSM coastline', () => {
+    // THE regression test for the recurring "polygons don't hug the shoreline"
+    // bug. Both failure modes — sparse vertices whose chords cut across land,
+    // and edges floating in a gap offshore — show up the same way: points on
+    // the landward edge far from the real coastline. So measure exactly that:
+    // densely sample the landward edge of every polygon and assert every
+    // sample lies within tolerance of the zone's real OSM coastline node run
+    // (src/data/coastline.ts, generated from the OSM/Overpass fetch).
+    //
+    //   ≤ 20 m  — the band's landward edge hugs the real coast
+    //   ≥ 8 landward vertices in the run, and no vertex ambiguously between
+    //           the coast and the seaward edge, so a strip that drifts
+    //           offshore wholesale fails here too (its landward run vanishes).
+    const TOLERANCE_M = 20
+    const LANDWARD_MAX_M = 60 // vertices this close to the coast = landward
+    const SEAWARD_MIN_M = 150 // vertices this far out = seaward edge
+    const MIN_LANDWARD_VERTICES = 20
+
+    // distance from p to the zone's coastline run — an OPEN polyline, so no
+    // wrap-around segment (a closing chord would sit offshore and mask drift)
+    const distToCoast = (p: [number, number], coast: [number, number][]) => {
+      let min = Infinity
+      for (let i = 0; i < coast.length - 1; i++) {
+        const d = distToSegmentM(p, coast[i], coast[i + 1])
+        if (d < min) min = d
+      }
+      return min
+    }
+
+    for (const zone of SEED_ZONES) {
+      const coast = COASTLINE_RUNS[zone.id]
+      expect(coast, `${zone.id} has no coastline reference run`).toBeDefined()
+
+      const dists = zone.polygon.map((p) => distToCoast(p, coast!))
+      const isLandward = dists.map((d) => d <= LANDWARD_MAX_M)
+
+      // no ambiguous vertices: every vertex is clearly coast-side or seaward
+      const ambiguous = dists.filter((d) => d > LANDWARD_MAX_M && d < SEAWARD_MIN_M)
+      expect(
+        ambiguous,
+        `${zone.id} has ${ambiguous.length} vertices neither on the coast nor clearly offshore (${ambiguous.slice(0, 3).map((d) => d.toFixed(0)).join(', ')} m)`,
+      ).toHaveLength(0)
+
+      // the landward edge = maximal cyclic run of landward vertices
+      let best = { start: -1, len: 0 }
+      const n = zone.polygon.length
+      for (let start = 0; start < n; start++) {
+        if (isLandward[(start - 1 + n) % n]) continue // not a run start
+        let len = 0
+        while (len < n && isLandward[(start + len) % n]) len++
+        if (len > best.len) best = { start, len }
+      }
+      expect(
+        best.len,
+        `${zone.id} landward run has only ${best.len} coast-side vertices — the landward edge must be a dense trace of the coastline`,
+      ).toBeGreaterThanOrEqual(MIN_LANDWARD_VERTICES)
+
+      // densely sample the landward run's edges (k+1 < len: the edge from the
+      // run's last vertex to the first seaward vertex is the end cap, not the
+      // landward edge)
+      let worst = { d: -1, at: '' }
+      for (let k = 0; k + 1 < best.len; k++) {
+        const a = zone.polygon[(best.start + k) % n]
+        const b = zone.polygon[(best.start + k + 1) % n]
+        const steps = Math.max(1, Math.ceil(metersBetween(a, b) / 8))
+        for (let s = 0; s <= steps; s++) {
+          const p: [number, number] = [
+            a[0] + ((b[0] - a[0]) * s) / steps,
+            a[1] + ((b[1] - a[1]) * s) / steps,
+          ]
+          const d = distToCoast(p, coast!)
+          if (d > worst.d) worst = { d, at: `(${p[0].toFixed(5)}, ${p[1].toFixed(5)})` }
+        }
+      }
+      expect(
+        worst.d,
+        `${zone.id} landward edge strays ${worst.d.toFixed(1)} m from the real coastline near ${worst.at} — it must hug the shore (chords cutting across land or a floating offshore gap both fail this)`,
+      ).toBeLessThanOrEqual(TOLERANCE_M)
+    }
+  })
 })
 
 // --------------------------------------------------------------------------
@@ -183,6 +290,19 @@ function metersBetween([lat1, lng1]: Pt, [lat2, lng2]: Pt): number {
   const latM = (lat1 - lat2) * 111_000
   const lngM = (lng1 - lng2) * 111_000 * Math.cos(((lat1 + lat2) / 2) * (Math.PI / 180))
   return Math.hypot(latM, lngM)
+}
+
+/** Distance from point p to segment [a, b], in metres (small-area planar). */
+function distToSegmentM(p: Pt, a: Pt, b: Pt): number {
+  const k = Math.cos(((a[0] + b[0]) / 2) * (Math.PI / 180))
+  const px = (p[1] - a[1]) * 111_320 * k
+  const py = (p[0] - a[0]) * 110_540
+  const bx = (b[1] - a[1]) * 111_320 * k
+  const by = (b[0] - a[0]) * 110_540
+  const len2 = bx * bx + by * by
+  let t = len2 > 0 ? (px * bx + py * by) / len2 : 0
+  t = Math.max(0, Math.min(1, t))
+  return Math.hypot(px - t * bx, py - t * by)
 }
 
 describe('zonesBoundingBox', () => {

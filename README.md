@@ -303,31 +303,37 @@ Notes:
 
 ## 10. Zone boundaries
 
-The polygons in `src/data/zones.ts` are **hand-drawn approximations, traced against the real coastline** — not survey boundaries and not official BFAR fisheries areas.
+The polygons in `src/data/zones.ts` are **machine-traced approximations generated from the real OSM coastline** — not survey boundaries and not official BFAR fisheries areas.
 
-Each zone is a **single simple polygon of 12 vertices**: a nearshore band whose **landward edge sits on mapped OpenStreetMap coastline nodes** and whose **seaward edge runs 300–400 m out**, perpendicular to the shore. Six shore corners are hand-picked from the 8–33 mapped nodes in each stretch, chosen so that no straight chord cuts more than ~165 m across land and none leaves more than ~430 m of nearshore water uncovered. The seaward edge is that same run offset in a local metric frame, miter-joined at each corner and capped at 1.35× the band width, so sharp bends — the port basin corner, the Honda Bay creek mouth — cannot spike out to sea.
+Each zone is a **single simple polygon of 63–164 vertices**: a nearshore band whose **landward edge is a dense run of real OpenStreetMap coastline nodes** (verified to stay within 20 m of the actual coastline everywhere) and whose **seaward edge is a true geodesic line buffer of that run, cut flat at the ends**, so it is a smooth parallel offset at exactly the band width — around piers, corners and headlands alike. Both edges are Douglas–Peucker simplified (landward ε = 8 m, seaward ε = 15 m), which is what keeps the landward chord error inside ~8 m.
 
-| id | What the band covers | Band | Area |
+| id | What the band covers | Band | Vertices (landward / seaward) |
 | --- | --- | --- | --- |
-| `pp-bay` | Bancao-Bancao shore → Pristine Beach → port basin → city quay → San Jose waterfront | 400 m | 2.9 km² |
-| `sta-lourdes` | Peninsula east coast: Blue Palawan shore → Tagburos mangrove inlet → Sta. Lourdes wharf | 350 m | 3.2 km² |
-| `honda-inner` | Honda Bay west shore, from the wharf north to 9.894 N | 350 m | 2.2 km² |
-| `honda-outer` | Mangrove shore and tidal channel north to the creek mouth (9.9307, 118.7536) | 350 m | 1.5 km² |
-| `binuatan` | Northeast coast: Honda Bay mouth → off Marayugon → around the 9.9812 headland → toward Babuyan | 400 m | 4.7 km² |
-| `sabang` | St. Paul Bay: NW end of the shore → Sabang village and boat terminal → east along the bay | 350 m | 2.9 km² |
+| `pp-bay` | Bancao-Bancao shore → Pristine Beach → port basin → city quay → San Jose waterfront | 400 m | 164 (114 / 50) |
+| `sta-lourdes` | Peninsula east coast: Blue Palawan shore → Tagburos mangrove inlet → Sta. Lourdes wharf pier complex → harbour shore | 350 m | 124 (77 / 47) |
+| `honda-inner` | Honda Bay west shore, from N of the wharf pier complex north to 9.894 | 350 m | 67 (45 / 22) |
+| `honda-outer` | Mangrove shore and tidal channel north to just W of the creek mouth | 350 m | 63 (43 / 20) |
+| `binuatan` | Northeast coast: Honda Bay mouth → off Marayugon → around the 9.9812 headland → toward Babuyan | 400 m | 95 (60 / 35) |
+| `sabang` | St. Paul Bay: NW end of the shore → Sabang village and boat terminal → east along the bay | 350 m | 161 (117 / 44) |
 
-Adjacent zones **tile** rather than overlap: `sta-lourdes`/`honda-inner` share the Sta. Lourdes wharf cap (`[9.8431, 118.7438]` + `[9.84224, 118.74802]`), and `honda-inner`/`honda-outer` share `[9.894, 118.7457]` + `[9.89526, 118.74901]`. If you re-shape either zone of a pair, keep those vertices byte-identical in both or the overlap test fails.
+**How they are generated** (and re-generated — do not hand-edit the coordinates):
 
-Coastline sources are the OSM API and Overpass (retrieved 2026-09-17/18); the way ids behind each edge are listed in the header of `zones.ts`. Reference points the shapes were drawn against: the Bancao-Bancao lighthouse and Pristine Beach, the city quay, the Santa Lourdes wharf, the Tagburos mangrove inlet, the Honda Bay creek mouth, the Marayugon headland, Sabang village and its boat terminal, and Saint Paul Rock for orientation.
+1. CI (`.github/workflows/fetch-coastline.yml`) runs `scripts/fetch-coastline.mjs`, which pulls every `natural=coastline` way in the six zone bboxes from Overpass plus the documented ways from the OSM API, and commits the raw geometry to `scripts/coastline-cache/osm-coastline.json` (the dev sandbox has no egress to those APIs).
+2. `npx tsx scripts/generate-zones.ts` walks the coastline graph (Dijkstra between per-zone anchors), bridges thin out-and-back spurs (piers, fish pens — only where the bridge chord stays within 15 m of the real coast), builds the buffer, verifies **landward deviation ≤ 15 m, ring simplicity, pairwise non-overlap and band width**, then writes `src/data/zones.ts` and `src/data/coastline.ts`.
+3. `src/data/zones.test.ts` asserts the property that actually matters: **every point of the landward edge within 20 m of the real coastline**, plus simplicity and non-overlap — so the "jagged blade" or "floating offshore strip" regressions fail CI instead of waiting for a human to eyeball screenshots.
 
-Four caveats worth knowing:
+Where two strips face the same way they share one end-cap vertex exactly (`honda-inner`/`honda-outer` at `[9.893315, 118.748879]`). Where the coast turns ~90° — at the Sta. Lourdes wharf (E-facing meets N-facing) and at San Jose — each zone takes its own natural cap and a small wedge of open water stays uncovered between them; forcing a shared cap there is what produced self-intersections in earlier revisions.
 
-- The outlines are simplified to six shore corners each, so a zone edge can cut across a small headland or bridge a cove rather than follow it in (the cove east of Sabang village is bridged). They mark an area, not a precise boundary line.
+Coastline sources: OSM API and Overpass (re-fetched 2026-09-19 by CI); the way ids behind each edge are listed in the header of `zones.ts`. Visual check renders live in `docs/coastline-shots/`.
+
+Caveats worth knowing:
+
+- Thin water-side structures (the Sta. Lourdes pier complex, fish-pen fringes off Bancao-Bancao and Sabang) are bridged at their foot: the landward edge stays within 20 m of the real coastline but does not thread around every piling. They mark an area, not a precise boundary line.
 - Because the bands hug the shore, the Honda Bay islands — Cowrie, Cañon, Luli, Starfish and the rest — fall **outside** them, in open bay water. A report about an island trip belongs to the zone the boat left from.
-- The mangrove creek complex at the head of Honda Bay (way `1530271757`) is deliberately **not** traced: it doubles back on itself through the mangroves, and following it is what produced the earlier jagged, self-intersecting polygons. The `honda-outer` band stops at its mouth.
+- The mangrove creek complex at the head of Honda Bay (way `1530271757`) is deliberately **not** traced: it doubles back on itself through the mangroves, and following it is what produced the earlier jagged, self-intersecting polygons. The `honda-outer` band stops just short of its mouth.
 - `binuatan` is a legacy id: there is no coastal place called Binuatan (the only Binuatan in the Philippines is a weaving centre in Barangay Santa Monica, inside the city). That polygon covers the real northeast-coast water off the Marayugon and Babuyan barangays.
 
-> **Provenance note:** these polygons have been redrawn twice, and both times by over-correcting. An early revision placed them by offset from the coastline with the vertices deliberately kept clear of the mapped shore, which put the shapes out in open water instead of over the areas the app is meant to warn people about. The fix for that pasted raw coastline traces straight into the polygons — including the mangrove creek way above, which crosses back over itself — leaving every zone jagged, self-intersecting and in places only a few metres wide. The current bands are offset too, but only their *seaward* edge is: every landward vertex is a mapped coastline node. If you're touching this file, verify visually that every zone's near-land edge actually sits against the shoreline — zoom the map into each zone individually and check for a gap of open water between the polygon and the coast before committing.
+> **Provenance note:** these polygons have been redrawn three times, and the first two revisions both over-corrected. An early revision placed them by offset from the coastline with the vertices deliberately kept clear of the mapped shore, which put the shapes out in open water. The fix for that pasted raw coastline traces straight into the polygons, leaving every zone jagged and self-intersecting. The third revision (2026-09-18) was accurate at six shore corners per zone but too sparse: the straight chords either cut across land in zigzags or floated in a gap offshore, depending on which side of the real coastline the sparse corners landed. The current bands (2026-09-19) are generated end-to-end by `scripts/generate-zones.ts` with the landward-edge tolerance asserted by test — do not hand-place vertices; run `npx tsx scripts/generate-zones.ts --check` and `npm test` before committing any geometry change.
 
 Before this is used for real public-health decisions, replace them with the actual boundaries from BFAR or the Puerto Princesa City LGU.
 
@@ -373,7 +379,7 @@ A growing suite across the following areas (see `docs/` for the browser-verifica
 - **`src/motion/sheetAnchors.test.ts`** — the sheet's snap arithmetic: offsets, clamping, velocity projection, flick gating, underlay mapping, and header-chrome fade timing (threshold, easing curve, reduced-motion instant swap).
 - **`src/lib/firebase.test.ts`** — `readFirebaseConfig` returns a config only when all five keys are real, so a half-filled `.env` falls back to demo mode instead of half-initialising Firebase.
 - **`src/motion/readouts.test.ts`** — the data-derived copy: peek summary, anchor readout, dominant status, advisory share.
-- **`src/data/zones.test.ts`** — polygon sanity: 4–6 zones all starting `safe`; unique ids plus non-trivial names and descriptions; at least 3 plausible vertices each, all inside the Puerto Princesa box; raw `[lat, lng]` tuples still contain nested arrays (exactly why `scripts/seed.ts` must serialize them) and survive a Firestore round-trip intact; **no two zones overlap** — no interior edge crossings and no vertex of one strictly inside another, while shared boundary vertices and edges are allowed so neighbours can tile; every zone anchored within ~250 m of a real OpenStreetMap coastline node (the guard against zones floating in open water); and `zonesBoundingBox` contains every vertex and `MAP_CENTER`.
+- **`src/data/zones.test.ts`** — polygon sanity: 4–6 zones all starting `safe`; unique ids plus non-trivial names and descriptions; at least 3 plausible vertices each, all inside the Puerto Princesa box; raw `[lat, lng]` tuples still contain nested arrays (exactly why `scripts/seed.ts` must serialize them) and survive a Firestore round-trip intact; **no two zones overlap** — no interior edge crossings and no vertex of one strictly inside another, while shared boundary vertices and edges are allowed so neighbours can tile; every zone anchored within ~250 m of a real OpenStreetMap coastline node; **every zone a simple polygon (no self-intersections)**; **every point of the landward edge within 20 m of the zone's real OSM coastline run** (`src/data/coastline.ts` — the direct guard against both the "chords cutting across land" and "floating offshore gap" regressions); and `zonesBoundingBox` contains every vertex and `MAP_CENTER`.
 - **`src/lib/backend.firebase.test.ts`** — Cloudinary uploads use the correct endpoint and form fields, return `secure_url`, and surface configuration/API errors.
 - **`src/lib/firestoreSeedValidation.test.ts`** — seed payloads pass the shape Firestore actually rejects on.
 
@@ -399,7 +405,7 @@ Additional one-off verification scripts (bottom sheet snap points, header fade t
 | I want to… | Touch this |
 | --- | --- |
 | **Add or edit a zone** | `src/data/zones.ts` → then `npm run seed -- --force` to push it. In demo mode, clear `localStorage` to re-seed. Verify the new polygon actually touches the coastline (see §10) before shipping. |
-| **Re-shape a zone polygon** | Same file. Keep it one simple polygon of ~6–12 vertices: landward vertices on real coastline nodes, seaward edge offset 300–400 m perpendicular (§10 has the recipe and the shared-cap rule). `name` values are asserted verbatim by `src/App.test.tsx`, so change them there too; `description` is free text. Run `npm test` afterwards — `zones.test.ts` catches self-intersections, overlaps and zones that have drifted off the shore. |
+| **Re-shape a zone polygon** | Don't hand-edit coordinates — adjust the anchors/width in `scripts/generate-zones.ts`, re-fetch the coast if needed (see §10), then run `npx tsx scripts/generate-zones.ts` to rewrite `src/data/zones.ts` + `src/data/coastline.ts`. `name` values are asserted verbatim by `src/App.test.tsx`, so change them there too; `description` is free text. Run `npm test` afterwards — `zones.test.ts` asserts the 20 m landward-edge tolerance, self-intersection freedom and non-overlap. |
 | **Replace the polygons with real boundaries** | Same file. `polygon` accepts `[lat, lng]` pairs; the mapper also tolerates `{latitude, longitude}` GeoPoints entered in the console. |
 | **Change a status colour** | `src/lib/status.ts` (`hex` is what Leaflet draws) **and** the `@theme` block in `src/index.css` — they are duplicated on purpose and must be kept in sync. |
 | **Change the advisory wording** | `guidance` in `src/lib/status.ts`; the long explainer is in `src/pages/MapPage.tsx`. |
