@@ -238,8 +238,8 @@ src/
     ZoneSheet.tsx         # three-anchor bottom sheet (peek/mid/full): advisories + zone list,
                            # left status-accent cards, spring-driven with velocity-aware snap
     StatusPip.tsx         # the status dot (pops on status change)
-    Ambient.tsx            # advisory-signal gauge + map scanline (schematic)
-    Header.tsx  Legend.tsx  StatusBadge.tsx  Notice.tsx  DemoBanner.tsx
+    Ambient.tsx            # map scanline + registration marks (schematic)
+    Header.tsx  StatusPanel.tsx  StatusBadge.tsx  Notice.tsx  DemoBanner.tsx
     DecryptedText.tsx     # landing hero: glyphs resolve left to right (reactbits pattern)
     Waves.tsx             # landing background: three sine composites on a canvas
     CountUp.tsx           # landing figures: counts up on first view, re-tweens on live updates
@@ -262,7 +262,7 @@ src/
     Admin.tsx               # /admin review dashboard
 ```
 
-**Split suggestion:** one developer owns `Map.tsx` / `MapPage.tsx` / `Legend.tsx`; the other owns `ReportForm.tsx` / `Admin.tsx` / `AdminGate.tsx` / `ReportCard.tsx`. `store.ts`, `types.ts` and `status.ts` are the shared contract — change them together.
+**Split suggestion:** one developer owns `Map.tsx` / `MapPage.tsx` / `StatusPanel.tsx`; the other owns `ReportForm.tsx` / `Admin.tsx` / `AdminGate.tsx` / `ReportCard.tsx`. `store.ts`, `types.ts` and `status.ts` are the shared contract — change them together.
 
 ---
 
