@@ -13,7 +13,7 @@ import type { LatLng, ZoneStatus } from '../types'
  * of shallow water 350–400 m wide:
  *
  *   - the LANDWARD edge is a dense run of real OpenStreetMap coastline nodes
- *     (40–120 vertices per zone, Douglas-Peucker simplified at 8 m), tracing
+ *     (40–190 vertices per zone, Douglas-Peucker simplified at 8 m), tracing
  *     the natural shore contour — verified to stay within 20 m of the real
  *     coastline everywhere (see zones.test.ts and src/data/coastline.ts);
  *   - the SEAWARD edge is the flat-cap-cut, water-side arc of a geodesic line
@@ -24,16 +24,18 @@ import type { LatLng, ZoneStatus } from '../types'
  * Where two strips face the same way they share their end-cap vertex exactly,
  * so they tile edge to edge (honda-inner | honda-outer at [9.893315,
  * 118.748879], N of the Sta. Lourdes wharf). Where the coast turns — at the
- * wharf itself (E-facing strip meets N-facing strip) and at San Jose — each
- * zone takes its own natural cap and a small wedge of open water stays
- * uncovered between them.
+ * wharf itself (E-facing strip meets N-facing strip) and at the San Jose
+ * headland (pp-bay's N cap, where the coast reverses onto the bay's far
+ * shore) — each zone takes its own natural cap and a small wedge of open
+ * water stays uncovered between them.
  *
  * Shoreline sources: OSM API and Overpass (re-fetched 2026-09-19 by CI, see
  * scripts/fetch-coastline.mjs; raw cache committed at
  * scripts/coastline-cache/osm-coastline.json). Main ways per zone:
  *
  *   pp-bay        1201582689, 1201581683, 1201581684 (Bancao-Bancao shore),
- *                 4247188 + node 1044151904 (port basin and city waterfront)
+ *                 4247188 + node 1044151904 (port basin and city waterfront),
+ *                 1529960715 + apex node of 1529960721 (headland point)
  *   sta-lourdes   62049956 (peninsula east coast, Blue Palawan -> wharf and
  *                 pier complex), 1530225667 (harbour shore N of the pier)
  *   honda-inner   1530225665, 1530225667, 1530236382 (bay west shore)
@@ -51,6 +53,7 @@ import type { LatLng, ZoneStatus } from '../types'
  *   Blue Palawan Beach (city waterfront) 9.7672 N, 118.7716 E
  *   Antonio Bautista Golf Course         9.7451 N, 118.7649 E
  *   San Manuel (barangay, N of city)     9.7789 N, 118.7584 E
+ *   San Jose headland apex (pp-bay N cap) 9.7877 N, 118.7194 E
  *   Tagburos (barangay)                  9.8198 N, 118.7410 E
  *   Santa Lourdes (barangay)             9.8345 N, 118.7255 E
  *   Santa Lourdes Wharf                  9.8433 N, 118.7463 E
@@ -60,6 +63,7 @@ import type { LatLng, ZoneStatus } from '../types'
  *   Sabang boat terminal (Underg. River)10.1974 N, 118.8931 E
  *
  *   WATER / ISLANDS (orientation only — outside the nearshore bands)
+ *   Caña (islet off the pp-bay N shore)  9.7634 N, 118.7195 E
  *   Honda Bay (OSM natural=bay node)     9.8904 N, 118.8088 E
  *   Cowrie Island                        9.8383 N, 118.7721 E
  *   Cañon Island                         9.8522 N, 118.7617 E
@@ -93,14 +97,15 @@ export const SEED_ZONES: SeedZone[] = [
     id: 'pp-bay',
     name: 'Puerto Princesa Bay (City Proper)',
     description:
-      'The city bay southwest of the poblacion — Bancao-Bancao, San Jose and the port side. Where most city market shellfish is landed.',
+      'The city bay west of the poblacion — Bancao-Bancao, the port side and the San Jose shore north to its headland. Where most city market shellfish is landed.',
     /**
-     * 164 vertices (114 landward / 50 seaward), 400 m coastal band. Landward
+     * 271 vertices (190 landward / 81 seaward), 400 m coastal band. Landward
      * edge traces the real OSM coastline from Bancao-Bancao lighthouse
      * northwest past Pristine Beach, the fish-pen fringes, city port basin and
-     * city quay to the San Jose waterfront (within 20 m of it everywhere).
+     * city quay, then along the San Jose shore — NNE past the cove, around the
+     * E-W corner and NNW to the headland apex (within 20 m of it everywhere).
      * Seaward edge is the smooth parallel buffer contour 400 m out in Puerto
-     * Princesa Bay.
+     * Princesa Bay. Caña islet sits ~630 m off the north shore, outside the band.
      */
     polygon: [
       [9.72247, 118.768389],
@@ -216,9 +221,116 @@ export const SEED_ZONES: SeedZone[] = [
       [9.757466, 118.737148],
       [9.757694, 118.735497],
       [9.758839, 118.735422],
-      [9.761119, 118.733827],
-      [9.759077, 118.730822],
-      [9.757615, 118.731844],
+      [9.761429, 118.733608],
+      [9.76232, 118.73348],
+      [9.763699, 118.733752],
+      [9.764291, 118.734245],
+      [9.764699, 118.735241],
+      [9.765669, 118.735896],
+      [9.767995, 118.735404],
+      [9.76863, 118.73557],
+      [9.768881, 118.735376],
+      [9.768841, 118.735129],
+      [9.769854, 118.735009],
+      [9.76982, 118.734821],
+      [9.770041, 118.734779],
+      [9.770058, 118.734868],
+      [9.773701, 118.73572],
+      [9.775744, 118.735759],
+      [9.776159, 118.735597],
+      [9.776212, 118.735311],
+      [9.775331, 118.734879],
+      [9.774886, 118.733895],
+      [9.774384, 118.733366],
+      [9.774337, 118.73292],
+      [9.774537, 118.732754],
+      [9.775714, 118.732701],
+      [9.776497, 118.732405],
+      [9.777192, 118.731496],
+      [9.777628, 118.731136],
+      [9.777362, 118.730612],
+      [9.776391, 118.730273],
+      [9.775239, 118.730249],
+      [9.775086, 118.730367],
+      [9.774247, 118.729929],
+      [9.773243, 118.730042],
+      [9.772215, 118.729381],
+      [9.771329, 118.729075],
+      [9.770237, 118.727925],
+      [9.770213, 118.727585],
+      [9.769628, 118.727386],
+      [9.769004, 118.727523],
+      [9.768477, 118.727333],
+      [9.768462, 118.727029],
+      [9.768872, 118.726467],
+      [9.768756, 118.725851],
+      [9.768024, 118.725731],
+      [9.766991, 118.725957],
+      [9.766662, 118.725541],
+      [9.766925, 118.725154],
+      [9.768259, 118.72532],
+      [9.769275, 118.724456],
+      [9.769889, 118.724808],
+      [9.769788, 118.725658],
+      [9.771292, 118.725485],
+      [9.772149, 118.725554],
+      [9.771188, 118.724784],
+      [9.771837, 118.723396],
+      [9.772225, 118.723354],
+      [9.772622, 118.722625],
+      [9.772561, 118.722156],
+      [9.772965, 118.722156],
+      [9.773229, 118.72243],
+      [9.773723, 118.722297],
+      [9.774353, 118.723949],
+      [9.774921, 118.724687],
+      [9.775444, 118.725105],
+      [9.776032, 118.725094],
+      [9.776527, 118.724865],
+      [9.777278, 118.724728],
+      [9.77763, 118.72416],
+      [9.780869, 118.723812],
+      [9.781284, 118.722242],
+      [9.781803, 118.721643],
+      [9.782754, 118.721004],
+      [9.783801, 118.720452],
+      [9.784685, 118.720299],
+      [9.785839, 118.719866],
+      [9.786396, 118.719957],
+      [9.787722, 118.719383],
+      [9.786311, 118.716025],
+      [9.782656, 118.716992],
+      [9.781095, 118.717765],
+      [9.779101, 118.719233],
+      [9.778173, 118.720431],
+      [9.776888, 118.720603],
+      [9.776264, 118.719713],
+      [9.775013, 118.718889],
+      [9.773677, 118.718578],
+      [9.771885, 118.718571],
+      [9.770092, 118.719501],
+      [9.769227, 118.720824],
+      [9.768234, 118.720962],
+      [9.767159, 118.721524],
+      [9.766066, 118.721609],
+      [9.764882, 118.72215],
+      [9.763964, 118.723082],
+      [9.763379, 118.72405],
+      [9.76307, 118.72534],
+      [9.763237, 118.726656],
+      [9.764185, 118.728242],
+      [9.765421, 118.729225],
+      [9.766066, 118.730042],
+      [9.767273, 118.730773],
+      [9.768232, 118.731074],
+      [9.768553, 118.731412],
+      [9.767364, 118.731821],
+      [9.767006, 118.731885],
+      [9.765981, 118.73093],
+      [9.764956, 118.730332],
+      [9.762412, 118.729831],
+      [9.76012, 118.730208],
+      [9.757614, 118.731845],
       [9.756113, 118.732218],
       [9.754728, 118.73346],
       [9.753371, 118.733421],

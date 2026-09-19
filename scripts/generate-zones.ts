@@ -45,7 +45,11 @@ interface ZoneRun {
 const ZONE_RUNS: Record<string, ZoneRun> = {
   'pp-bay': {
     from: [9.7229, 118.7684], // Bancao-Bancao lighthouse
-    to: [9.7611, 118.7338], // San Jose waterfront
+    // Headland apex N of San Jose (way 1529960715/1529960721 junction): the
+    // coast reverses here onto the bay's far shore, so this is the natural
+    // northern cap — the run's NNE reach, E-W corner and NNW climb to the
+    // tip all face the same bay water as the city waterfront.
+    to: [9.7877, 118.7194],
     water: [9.705, 118.72],
     width: 400,
   },

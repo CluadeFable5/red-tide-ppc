@@ -217,6 +217,41 @@ describe('SEED_ZONES', () => {
       ).toBeLessThanOrEqual(TOLERANCE_M)
     }
   })
+
+  it('covers water and excludes land around the pp-bay headland junction', () => {
+    // The E-W section / hook / bight junction north of San Jose is the
+    // trickiest 2 km of pp-bay: the coast doubles back on itself (cove dip,
+    // hook, E-W run, north bight), so a buffer short-circuit here would
+    // silently swallow headland land or drop bay water while every generic
+    // check above (simple ring, 400 m width, 0 m landward deviation) stays
+    // green. These probes pin the land/water truth on both sides of the
+    // junction: water-side probes must be inside the band, land-side probes
+    // outside. Sides were established from the OSM way direction (run heads
+    // N with water on its left / W along the E-W run with water to the S)
+    // and cross-checked against the rendered polygon.
+    const ppBay = SEED_ZONES.find((zone) => zone.id === 'pp-bay')
+    expect(ppBay, 'pp-bay must exist').toBeDefined()
+    const ring = ppBay!.polygon
+    // [label, lat, lng, expectInside]
+    const probes: Array<[string, number, number, boolean]> = [
+      ['E-W south water (E)', 9.774, 118.7315, true],
+      ['E-W south water (W)', 9.773, 118.732, true],
+      ['headland N of hook (E)', 9.774, 118.7285, false],
+      ['headland N of hook (W)', 9.773, 118.729, false],
+      ['north bight water', 9.7765, 118.731, true],
+      ['headland corridor', 9.7765, 118.73, false],
+      ['cove bowl water', 9.768, 118.727, true],
+      ['cove mouth water', 9.771, 118.729, true],
+      ['open bay W of Caña', 9.7634, 118.718, false],
+      ['reach water', 9.766, 118.733, true],
+    ]
+    for (const [label, lat, lng, expected] of probes) {
+      expect(
+        pointStrictlyInside([lat, lng], ring),
+        `${label} (${lat}, ${lng}) must be ${expected ? 'INSIDE' : 'OUTSIDE'} the pp-bay band`,
+      ).toBe(expected)
+    }
+  })
 })
 
 // --------------------------------------------------------------------------
