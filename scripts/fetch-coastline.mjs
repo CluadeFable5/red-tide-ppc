@@ -8,6 +8,9 @@
  * uploads the result as the `coastline-raw` artifact; the dev pulls it back
  * with `gh run download -n coastline-raw`. See .github/workflows/fetch-coastline.yml.
  *
+ * HTTP goes through `curl`, not Node fetch: runner egress may be proxied via
+ * HTTPS_PROXY, which undici ignores but curl honours.
+ *
  * Output: JSON file mapping each region to the coastline ways inside its bbox,
  * each way as an ordered [[lat, lng], ...] geometry, plus a flat merge of the
  * documented OSM ways (fetched from the main OSM API as a cross-check).
@@ -15,6 +18,7 @@
  *   node scripts/fetch-coastline.mjs [output.json]
  */
 
+import { execFileSync } from 'node:child_process'
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
@@ -50,58 +54,78 @@ const OVERPASS_ENDPOINTS = [
   'https://overpass.private.coffee/api/interpreter',
 ]
 
-const bboxQuery = (r) =>
-  `(way["natural"="coastline"](${r.join(',')}););out geom;`
+const errors = []
 
-async function fetchJson(url, init, timeoutMs = 120_000) {
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+const note = (msg) => console.log(`::notice::${msg}`)
+
+/** curl one URL; returns parsed JSON. Records failures into `errors`. */
+function curlJson(url, { method = 'GET', data = null, timeoutSec = 90 } = {}) {
+  const args = [
+    '-sS',
+    '--max-time',
+    String(timeoutSec),
+    '-w',
+    '\n%{http_code}',
+    '-H',
+    'User-Agent: red-tide-ppc-coastline-fetch/1.0',
+    url,
+  ]
+  if (method === 'POST') args.push('-X', 'POST', '--data-binary', data)
+  let out
   try {
-    const res = await fetch(url, { ...init, signal: ctrl.signal })
-    if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`)
-    return await res.json()
-  } finally {
-    clearTimeout(timer)
+    out = execFileSync('curl', args, {
+      encoding: 'utf8',
+      maxBuffer: 256 * 1024 * 1024,
+      env: process.env, // curl picks up HTTPS_PROXY etc. from the environment
+    })
+  } catch (err) {
+    const msg = `${url}: curl failed: ${String(err.stderr || err.message).slice(0, 200)}`
+    errors.push(msg)
+    throw new Error(msg)
+  }
+  const nl = out.lastIndexOf('\n')
+  const status = Number(out.slice(nl + 1).trim())
+  const body = out.slice(0, nl)
+  if (status < 200 || status >= 300) {
+    const msg = `${url}: HTTP ${status}: ${body.slice(0, 160).replace(/\n/g, ' ')}`
+    errors.push(msg)
+    throw new Error(msg)
+  }
+  try {
+    return JSON.parse(body)
+  } catch (err) {
+    const msg = `${url}: bad JSON: ${body.slice(0, 120)}`
+    errors.push(msg)
+    throw new Error(msg)
   }
 }
+
+const bboxClause = (r) => `way["natural"="coastline"](${r.join(',')});`
 
 async function fetchOverpass() {
   // ONE union block containing every bbox — separate `( ... )` blocks would
   // discard all but the last set before `out`.
-  const body = Object.values(REGIONS)
-    .map(bboxQuery)
-    .join('')
-  const query = `[out:json][timeout:180];(${body});out geom;`
-  let lastErr
+  const query = `[out:json][timeout:120];(${Object.values(REGIONS)
+    .map(bboxClause)
+    .join('')});out geom;`
+  const encoded = 'data=' + encodeURIComponent(query)
   for (const endpoint of OVERPASS_ENDPOINTS) {
-    for (const method of ['POST', 'GET']) {
-      try {
-        console.log(`Trying Overpass ${method} ${endpoint} ...`)
-        const url =
-          method === 'GET' ? `${endpoint}?data=${encodeURIComponent(fixed)}` : endpoint
-        const data = await fetchJson(url, {
-          method,
-          ...(method === 'POST'
-            ? {
-                body: 'data=' + encodeURIComponent(query),
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              }
-            : {}),
-        })
-        console.log(`OK: ${data.elements?.length ?? 0} elements`)
-        return data
-      } catch (err) {
-        console.log(`  failed: ${err.message}`)
-        lastErr = err
-      }
+    try {
+      console.log(`Trying Overpass POST ${endpoint} ...`)
+      const data = curlJson(endpoint, { method: 'POST', data: encoded, timeoutSec: 180 })
+      console.log(`OK: ${data.elements?.length ?? 0} elements`)
+      return data
+    } catch (err) {
+      console.log(`  ${err.message}`)
     }
   }
-  throw lastErr
+  throw new Error(`all Overpass endpoints failed (${errors.length} errors so far)`)
 }
 
-async function fetchDocumentedWay(id) {
-  const data = await fetchJson(
+function fetchDocumentedWay(id) {
+  const data = curlJson(
     `https://api.openstreetmap.org/api/0.6/way/${id}/full.json`,
+    { timeoutSec: 60 },
   )
   const nodes = new Map(
     data.elements
@@ -110,14 +134,17 @@ async function fetchDocumentedWay(id) {
   )
   const way = data.elements.find((el) => el.type === 'way' && el.id === id)
   if (!way) throw new Error(`way ${id} missing from response`)
-  return {
-    id,
-    geometry: way.nodes.map((n) => nodes.get(n)).filter(Boolean),
-  }
+  return { id, geometry: way.nodes.map((n) => nodes.get(n)).filter(Boolean) }
 }
 
 const main = async () => {
-  let byRegion = Object.fromEntries(Object.keys(REGIONS).map((k) => [k, []]))
+  const proxy = Object.entries(process.env)
+    .filter(([k]) => /proxy/i.test(k))
+    .map(([k, v]) => `${k}=${v}`)
+    .join(' ')
+  note(`proxy env: ${proxy || '(none)'}`)
+
+  const byRegion = Object.fromEntries(Object.keys(REGIONS).map((k) => [k, []]))
   let overpassOk = false
   try {
     const overpass = await fetchOverpass()
@@ -139,19 +166,21 @@ const main = async () => {
     console.log(`Overpass sweep failed entirely: ${err.message}`)
   }
 
-  let documented = []
-  const docFails = []
-  const results = await Promise.allSettled(DOCUMENTED_WAYS.map(fetchDocumentedWay))
-  results.forEach((r, i) => {
-    if (r.status === 'fulfilled') documented.push(r.value)
-    else docFails.push(`${DOCUMENTED_WAYS[i]}: ${r.reason?.message}`)
-  })
-  if (docFails.length) console.log('Documented-way fallback misses:', docFails.join('; '))
+  const documented = []
+  for (const id of DOCUMENTED_WAYS) {
+    try {
+      documented.push(fetchDocumentedWay(id))
+    } catch (err) {
+      console.log(`documented way ${id} failed: ${err.message}`)
+    }
+  }
 
   if (!overpassOk && documented.length === 0) {
     // Surface through a check-run annotation: the sandbox cannot download run
     // logs, but it CAN read annotations via the check-runs API.
-    console.log('::error::Coastline fetch failed: Overpass unreachable and OSM API returned no documented ways')
+    console.log(
+      `::error::Coastline fetch failed. Errors: ${errors.slice(0, 6).join(' || ').slice(0, 3500)}`,
+    )
     throw new Error('no coastline source succeeded')
   }
 
@@ -167,12 +196,7 @@ const main = async () => {
   writeFileSync(
     OUT,
     JSON.stringify(
-      {
-        fetchedAt: new Date().toISOString(),
-        overpassOk,
-        regions: byRegion,
-        documented,
-      },
+      { fetchedAt: new Date().toISOString(), overpassOk, regions: byRegion, documented },
       null,
       1,
     ),
