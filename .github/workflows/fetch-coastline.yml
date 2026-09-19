@@ -1,0 +1,45 @@
+# Fetch the real OSM coastline geometry behind the zone polygons.
+#
+# The dev sandbox cannot reach the OSM/Overpass APIs (egress is blocked), but
+# GitHub runners can. This workflow runs scripts/fetch-coastline.mjs and uploads
+# the raw geometry as the `coastline-raw` artifact; pull it back with:
+#
+#   gh run list --workflow fetch-coastline.yml --limit 1
+#   gh run download <run-id> -n coastline-raw
+#
+# Only runs when the fetch script itself changes, so it stays dormant otherwise.
+
+name: Fetch coastline
+
+on:
+  push:
+    paths:
+      - 'scripts/fetch-coastline.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    name: Fetch OSM coastline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Fetch coastline geometry
+        run: node scripts/fetch-coastline.mjs coastline-raw/overpass-coastline.json
+
+      - name: Upload coastline artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: coastline-raw
+          path: coastline-raw/overpass-coastline.json
+          retention-days: 30
+          if-no-files-found: error
