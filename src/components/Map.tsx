@@ -235,7 +235,9 @@ function ZonePolygon({
         color: paint.hex,
         fillColor: paint.hex,
         weight: isSelected ? paint.weightSelected : paint.weight,
-        opacity: 0.95,
+        // Per-status outline strength (see `strokeOpacity` in statusTheme.ts):
+        // `safe` recedes, everything else holds the default 0.95.
+        opacity: paint.strokeOpacity ?? 0.95,
         // The ramp itself. Leaflet writes these as attributes and the
         // transition on `.zone-path` does the interpolating — see
         // `zonePaint` in styles/statusTheme.ts for why it is a sequence.

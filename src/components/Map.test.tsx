@@ -119,8 +119,8 @@ describe('zone-path class application (production single-pass render)', () => {
       expect(el.getAttribute('fill-opacity')).toBe('0.46')
       return el
     })
-    // Its neighbours sit at the resting `fill` of 0.22.
-    expect(pathFor(container, 'honda-inner').getAttribute('fill-opacity')).toBe('0.22')
+    // Its neighbours sit at the resting `fill` of 0.16.
+    expect(pathFor(container, 'honda-inner').getAttribute('fill-opacity')).toBe('0.16')
 
     // Deselect: the same element drops back to the resting step.
     rerender(
@@ -137,7 +137,7 @@ describe('zone-path class application (production single-pass render)', () => {
     )
 
     await waitFor(() => {
-      expect(path.getAttribute('fill-opacity')).toBe('0.22')
+      expect(path.getAttribute('fill-opacity')).toBe('0.16')
     })
   })
 
