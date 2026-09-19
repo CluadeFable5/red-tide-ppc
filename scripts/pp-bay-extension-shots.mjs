@@ -144,14 +144,56 @@ async function stableGrid(page, tries = 14) {
   return prev // best effort after ~9 s; the framing assert guards us
 }
 
-/** Project lat/lng to viewport pixels from a tile-grid anchor (Web-Mercator). */
-function project(grid, lat, lng) {
-  const t = grid[0]
+/** Project lat/lng to viewport pixels from ONE tile anchor (Web-Mercator). */
+function projectFrom(t, lat, lng) {
   const n = 2 ** t.z
   const wx = ((lng + 180) / 360) * n
   const latR = (lat * Math.PI) / 180
   const wy = ((1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2) * n
   return { x: t.px + (wx - t.x) * 256, y: t.py + (wy - t.y) * 256, z: t.z }
+}
+
+/**
+ * Consensus projection: the grid's DOM-first tile is NOT trustworthy — after
+ * a zoom, stale placeholder tiles (old zoom, scaled rects, fading) linger in
+ * the DOM next to fresh tiles, and projecting from one silently drifts
+ * kilometres (measured: identical 3 km misframes on repeat runs). So project
+ * from THREE widely spread tiles and require agreement; a mixed grid never
+ * reaches consensus and we wait/retry instead of navigating on lies.
+ */
+async function consensusProject(page, lat, lng, tries = 12) {
+  for (let i = 0; i < tries; i++) {
+    const grid = await stableGrid(page)
+    // Spread anchors: nearest the centre, then farthest from it, then
+    // farthest from both — a stale tile can't hide in all three.
+    const byDist = (px, py) => [...grid].sort((a, b) =>
+      Math.hypot(a.px - px, a.py - py) - Math.hypot(b.px - px, b.py - py),
+    )
+    const a = byDist(CX, CY)[0]
+    const b = byDist(CX, CY).reverse()[0]
+    const c = [...grid].sort((p, q) =>
+      Math.min(Math.hypot(p.px - a.px, p.py - a.py), Math.hypot(p.px - b.px, p.py - b.py)) -
+      Math.min(Math.hypot(q.px - a.px, q.py - a.py), Math.hypot(q.px - b.px, q.py - b.py)),
+    ).reverse()[0]
+    const ps = [a, b, c].map((t) => projectFrom(t, lat, lng))
+    const zs = new Set(ps.map((p) => p.z))
+    const spread = Math.max(
+      Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y),
+      Math.hypot(ps[0].x - ps[2].x, ps[0].y - ps[2].y),
+      Math.hypot(ps[1].x - ps[2].x, ps[1].y - ps[2].y),
+    )
+    if (zs.size === 1 && spread <= 8) {
+      return {
+        x: (ps[0].x + ps[1].x + ps[2].x) / 3,
+        y: (ps[0].y + ps[1].y + ps[2].y) / 3,
+        z: ps[0].z,
+      }
+    }
+    await sleep(700)
+  }
+  throw new Error(
+    `tile grid never reached projection consensus for (${lat}, ${lng}) — refusing to misframe`,
+  )
 }
 
 const CX = 640
@@ -169,14 +211,14 @@ async function dragPan(page, dx, dy) {
 /** Pan until (lat, lng) sits within `tol` px of the centre (capped drags). */
 async function panTo(page, lat, lng, tol = 30, maxPans = 12) {
   for (let i = 0; i < maxPans; i++) {
-    const p = project(await stableGrid(page), lat, lng)
+    const p = await consensusProject(page, lat, lng)
     const dx = CX - p.x
     const dy = CY - p.y
     if (Math.hypot(dx, dy) <= tol) return p
     const cap = 250 / Math.max(250, Math.hypot(dx, dy))
     await dragPan(page, dx * cap * 0.95, dy * cap * 0.95)
   }
-  const p = project(await stableGrid(page), lat, lng)
+  const p = await consensusProject(page, lat, lng)
   if (Math.hypot(CX - p.x, CY - p.y) > 100) {
     throw new Error(
       `pan to (${lat}, ${lng}) stalled at (${p.x.toFixed(0)}, ${p.y.toFixed(0)}) — refusing to misframe`,
@@ -280,8 +322,8 @@ try {
   /** Fresh-grid waypoint overlay: markers are truth at screenshot time. */
   async function markTruth() {
     if (process.env.MARK_TRUTH !== '1') return
-    const grid = await stableGrid(page)
-    const marks = WAYPOINTS.map(([label, la, ln]) => ({ label, ...project(grid, la, ln) }))
+    const marks = []
+    for (const [label, la, ln] of WAYPOINTS) marks.push({ label, ...(await consensusProject(page, la, ln)) })
     await page.evaluate((ms) => {
       document.querySelector('#truth-marks')?.remove()
       const d = document.createElement('div')
