@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Polygon as LeafletPolygon } from 'leaflet'
-import { MapContainer, Polygon, Popup, TileLayer, ZoomControl, useMap } from 'react-leaflet'
+import type { Map as LeafletMap, Polygon as LeafletPolygon } from 'leaflet'
+import { MapContainer, Polygon, Popup, TileLayer, useMap } from 'react-leaflet'
 import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, zonesBoundingBox } from '../data/zones'
 import { zonePaint } from '../styles/statusTheme'
 // `LatLng` here is our own [lat, lng] tuple, which Leaflet accepts directly.
@@ -24,8 +24,29 @@ export interface MapProps {
    * default: it is a secondary safety reference, not the app's purpose.
    */
   shippingLanesVisible?: boolean
+  /**
+   * Hands the live Leaflet instance up once mounted, so the control column
+   * can drive zoom from its own buttons (Leaflet's zoom control is not
+   * rendered — see below).
+   */
+  onMapReady?: (map: LeafletMap) => void
   onSelectZone: (zoneId: string) => void
   onReport: (zoneId: string) => void
+}
+
+/** Publishes the Leaflet instance to the page chrome once the map mounts. */
+function MapReadyBridge({
+  onMapReady,
+}: {
+  onMapReady?: (map: LeafletMap) => void
+}) {
+  const map = useMap()
+
+  useEffect(() => {
+    onMapReady?.(map)
+  }, [map, onMapReady])
+
+  return null
 }
 
 /** Fits the map to the zones the first time they arrive. */
@@ -279,21 +300,25 @@ function ZonePolygon({
  * THE BASE LAYER
  * --------------
  * This component is the map page's persistent base layer: it is mounted once,
- * behind the sheet, and never unmounts as the sheet moves. Leaflet measures its
- * container on mount and positions every pane with transforms, so the only thing
- * allowed to transform it is the *underlay wrapper* in MapPage — and that wrapper
- * deliberately starts at `scale(1)` at the peek anchor, so the initial
- * measurement happens on an untransformed box. Leaflet 1.9's `getScale()` reads
- * `getBoundingClientRect()` against `offsetWidth`, so a scaled container still
- * maps pointer coordinates correctly once it does recede.
+ * behind all the floating chrome, and never unmounts. Leaflet measures its
+ * container on mount and positions every pane with transforms, so the
+ * container itself is never transformed (the old sheet's recede underlay is
+ * gone with the sheet — the drawers clip inside their own windows instead).
+ *
+ * ZOOM CONTROL
+ * ------------
+ * `zoomControl={false}` and no `<ZoomControl>` child: Leaflet's control
+ * renders 30px links and the app CSS hid it below 640px. Zoom now lives in
+ * the top-right control column as 44px buttons on every viewport
+ * (`MapControlColumn.tsx`), wired to this instance via `onMapReady`.
  *
  * ATTRIBUTION
  * -----------
- * `attributionControl={false}`: the control is pinned to the bottom-right of the
- * map, which is underneath the sheet at every anchor. OSM attribution is a
- * licence requirement, so it lives on the sheet instead: a compact `© OSM` link
- * in the always-visible peek row, with the full credit in the sheet footer
- * (ZoneSheet.tsx).
+ * `attributionControl={false}`: OSM attribution is a licence requirement and
+ * must be visible in every state, so it is a persistent credit outside every
+ * clip window — the always-visible pill pinned bottom-left in MapPage
+ * (`map-attribution`), with the full credit also inside the zone drawer
+ * (ZoneDrawer.tsx footer) as before.
  */
 export function Map({
   zones,
@@ -303,6 +328,7 @@ export function Map({
   focusZoneId,
   focusToken,
   shippingLanesVisible = false,
+  onMapReady,
   onSelectZone,
   onReport,
 }: MapProps) {
@@ -329,19 +355,18 @@ export function Map({
       zoom={MAP_DEFAULT_ZOOM}
       maxBounds={MAP_MAX_BOUNDS}
       scrollWheelZoom
-      // Zoom buttons are moved to the top-right and hidden on phones (see
-      // index.css): the header overlay occupies the top of the screen, and
-      // pinch-zoom is the expected gesture on a touch device anyway.
+      // Zoom lives in the control column (see module doc); Leaflet's own
+      // control is never rendered.
       zoomControl={false}
       attributionControl={false}
       className="h-full w-full"
     >
-      <ZoomControl position="topright" />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
+      <MapReadyBridge onMapReady={onMapReady} />
       <FitToBounds box={box} resetToken={resetToken} />
       <FocusZone zone={focusZone} token={focusToken} />
       <ZonePressFeedback />

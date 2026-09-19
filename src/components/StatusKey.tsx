@@ -1,4 +1,5 @@
-import { motion, useTransform } from 'motion/react'
+import { useRef } from 'react'
+import { motion, motionValue, useTransform } from 'motion/react'
 import type { MotionValue } from 'motion/react'
 import { ZONE_STATUS_ORDER } from '../lib/status'
 import { zoneLabel, zoneTheme } from '../styles/statusTheme'
@@ -26,30 +27,38 @@ import { StatusPip } from './StatusPip'
  * one does on mobile GPUs. (The drawer, whose card track translates, uses a
  * solid background for exactly that reason — see `AdvisoryDrawer.tsx`.)
  *
- * Chrome fade:
- *   Like the rest of the floating chrome, the row fades out as the sheet
- *   rises — at mid/full the sheet is the readout. While faded, the pills also
- *   drop their pointer events, so invisible chrome can never swallow a map
- *   gesture. The wrapper itself is `pointer-events-none` so the map stays
- *   interactive everywhere except on the chips.
+ * Chrome fade (optional):
+ *   The row can fade with a progress value (invisible chrome also drops its
+ *   pointer events, so it can never swallow a map gesture). The map page no
+ *   longer fades it — the bottom sheet that drove the fade is gone — so the
+ *   prop is optional and defaults to a constant, always-visible 1. The
+ *   wrapper itself is `pointer-events-none` so the map stays interactive
+ *   everywhere except on the chips.
  */
 
 export interface StatusKeyProps {
   counts: Record<ZoneStatus, number>
-  /** Driven by the sheet's progress; the row fades, it does not move. */
-  chromeOpacity: MotionValue<number>
+  /** Optional fade driver; defaults to always visible. */
+  chromeOpacity?: MotionValue<number>
 }
 
 export function StatusKey({ counts, chromeOpacity }: StatusKeyProps) {
+  // Constant visibility when no fade driver is supplied — created once.
+  const fallbackOpacity = useRef<MotionValue<number> | null>(null)
+  if (fallbackOpacity.current === null) {
+    fallbackOpacity.current = motionValue(1)
+  }
+  const opacity = chromeOpacity ?? fallbackOpacity.current
+
   // Chips re-enable pointer events only while the chrome is actually
   // visible — invisible chrome must never eat map gestures.
-  const chipsPointerEvents = useTransform(chromeOpacity, (value): string =>
+  const chipsPointerEvents = useTransform(opacity, (value): string =>
     value < 0.1 ? 'none' : 'auto',
   )
 
   return (
     <motion.div
-      style={{ opacity: chromeOpacity }}
+      style={{ opacity }}
       className="pointer-events-none absolute left-3 top-[4.5rem] z-[1010] mt-[env(safe-area-inset-top)]"
       data-testid="status-key"
     >

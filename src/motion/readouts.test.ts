@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ANCHOR_ACTION_LABEL,
   advisoryShare,
-  anchorReadout,
   dominantZoneStatus,
   formatPercent,
+  sidePanelReadout,
   tideBaselinePath,
   tideWavePath,
   zoneSummaryLine,
@@ -31,21 +30,10 @@ describe('zoneSummaryLine', () => {
   })
 })
 
-describe('anchorReadout', () => {
-  it('numbers the three anchors against the total', () => {
-    expect(anchorReadout('peek')).toBe('01 / 03')
-    expect(anchorReadout('mid')).toBe('02 / 03')
-    expect(anchorReadout('full')).toBe('03 / 03')
-  })
-})
-
-describe('ANCHOR_ACTION_LABEL', () => {
-  it('describes the next state for every anchor', () => {
-    expect(ANCHOR_ACTION_LABEL.peek).toMatch(/show/i)
-    expect(ANCHOR_ACTION_LABEL.full).toMatch(/collapse/i)
-    for (const label of Object.values(ANCHOR_ACTION_LABEL)) {
-      expect(label.length).toBeGreaterThan(0)
-    }
+describe('sidePanelReadout', () => {
+  it('numbers the two drawer states against the total — the sheet language adapted', () => {
+    expect(sidePanelReadout('collapsed')).toBe('01 / 02')
+    expect(sidePanelReadout('open')).toBe('02 / 02')
   })
 })
 

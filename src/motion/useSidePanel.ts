@@ -1,19 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react'
 import {
   animate,
   useDragControls,
   useMotionValue,
+  useMotionValueEvent,
   useReducedMotion,
 } from 'motion/react'
 import type { DragControls, MotionValue } from 'motion/react'
 import {
   SIDE_PANEL_FALLBACK_WIDTH,
+  drawerWindowWidth,
   resolveSidePanelAnchor,
   sidePanelOffsets,
   toggleSidePanelState,
 } from './sidePanelAnchors'
-import type { SidePanelOffsets, SidePanelState } from './sidePanelAnchors'
+import type {
+  SidePanelEdge,
+  SidePanelOffsets,
+  SidePanelState,
+} from './sidePanelAnchors'
 
 /**
  * Spring the drawer snaps with.
@@ -47,8 +60,14 @@ export interface SidePanelController {
   panelRef: RefObject<HTMLDivElement | null>
   /** Current resting state. */
   state: SidePanelState
+  /** The edge the panel is pinned to — decides the sign of `collapsed`. */
+  edge: SidePanelEdge
   /** Offsets in px for the measured card width. */
   offsets: SidePanelOffsets
+  /** Measured card width in px (the fallback until layout reports). */
+  panelWidth: number
+  /** Drag limits for motion's `dragConstraints`, ordered for either edge. */
+  constraints: { left: number; right: number }
   /** The card track's translateX. */
   offsetX: MotionValue<number>
   dragControls: DragControls
@@ -66,10 +85,21 @@ export interface SidePanelController {
   didDrag: () => boolean
 }
 
+export interface UseSidePanelOptions {
+  /** Which screen edge the panel tucks into. Default `'left'`. */
+  edge?: SidePanelEdge
+  /**
+   * Width assumed before the first measurement (jsdom has no layout at all).
+   * Should match the panel's rendered width so the collapsed offset never
+   * leaves a sliver visible. Default `SIDE_PANEL_FALLBACK_WIDTH`.
+   */
+  fallbackWidth?: number
+}
+
 /**
  * Owns the advisory drawer's position and its open/collapsed state.
  *
- * A horizontal, two-state mirror of `useZoneSheet` — same structure on
+ * A horizontal, two-state sibling of the retired `useZoneSheet` — same structure on
  * purpose, so a reader who knows the sheet already knows this hook:
  *
  *  - `dragListener={false}` + `useDragControls` moves drag activation onto
@@ -88,10 +118,23 @@ export interface SidePanelController {
  */
 export function useSidePanel(
   initialState: SidePanelState = 'open',
+  options: UseSidePanelOptions = {},
 ): SidePanelController {
+  const edge = options.edge ?? 'left'
+  const fallbackWidth = options.fallbackWidth ?? SIDE_PANEL_FALLBACK_WIDTH
   const panelRef = useRef<HTMLDivElement | null>(null)
-  const panelWidth = useMeasuredWidth(panelRef)
-  const offsets = useMemo(() => sidePanelOffsets(panelWidth), [panelWidth])
+  const panelWidth = useMeasuredWidth(panelRef, fallbackWidth)
+  const offsets = useMemo(
+    () => sidePanelOffsets(panelWidth, edge, fallbackWidth),
+    [panelWidth, edge, fallbackWidth],
+  )
+  const constraints = useMemo(
+    () => ({
+      left: Math.min(offsets.open, offsets.collapsed),
+      right: Math.max(offsets.open, offsets.collapsed),
+    }),
+    [offsets],
+  )
 
   const offsetX = useMotionValue(offsets[initialState])
   const [state, setState] = useState<SidePanelState>(initialState)
@@ -176,7 +219,11 @@ export function useSidePanel(
   // computed for the old width and the collapsed card lands half-visible.
   // Keyed on geometry only — never on `state`, or every drag would be yanked
   // back to where it started.
-  useEffect(() => {
+  //
+  // A layout effect: paired with the layout-effect measurement above, the
+  // first painted frame already carries the measured offsets — a drawer that
+  // mounts `collapsed` never paints a fallback-width mis-pin.
+  useLayoutEffect(() => {
     stopSnap()
     offsetX.jump(offsets[stateRef.current])
   }, [offsets, offsetX, stopSnap])
@@ -184,7 +231,10 @@ export function useSidePanel(
   return {
     panelRef,
     state,
+    edge,
     offsets,
+    panelWidth,
+    constraints,
     offsetX,
     dragControls,
     startDrag,
@@ -198,16 +248,56 @@ export function useSidePanel(
 }
 
 /**
- * Width of the gauge card track.
+ * The clip window's width, driven by the SAME motion value as the track's
+ * position — the invariant that makes mid-drag clipping structural.
  *
- * Falls back to `SIDE_PANEL_FALLBACK_WIDTH` where layout does not exist
- * (jsdom) — unlike the sheet, the card width is the element's own, not the
- * viewport's, so there is no window dimension to fall back to.
+ * A subscription rather than `useTransform` on purpose (moved here from
+ * `AdvisoryDrawer` and shared by both right-edge drawers): the card width
+ * can change independently of the offset (font load, rotation, viewport
+ * resize), and this keeps the width correct through both without depending
+ * on how the transform helper caches its closure.
  */
-function useMeasuredWidth(ref: RefObject<HTMLElement | null>): number {
-  const [width, setWidth] = useState(() => SIDE_PANEL_FALLBACK_WIDTH)
-
+export function useClipWindowWidth(
+  offsetX: MotionValue<number>,
+  panelWidth: number,
+  edge: SidePanelEdge,
+): MotionValue<number> {
+  const windowWidth = useMotionValue(
+    drawerWindowWidth(panelWidth, offsetX.get(), edge),
+  )
+  const panelWidthRef = useRef(panelWidth)
+  panelWidthRef.current = panelWidth
+  const edgeRef = useRef(edge)
+  edgeRef.current = edge
+  useMotionValueEvent(offsetX, 'change', (x) => {
+    windowWidth.set(drawerWindowWidth(panelWidthRef.current, x, edgeRef.current))
+  })
   useEffect(() => {
+    windowWidth.set(drawerWindowWidth(panelWidth, offsetX.get(), edge))
+  }, [panelWidth, offsetX, windowWidth, edge])
+  return windowWidth
+}
+
+/**
+ * Width of the card track.
+ *
+ * Falls back where layout does not exist (jsdom) — unlike the sheet, the
+ * card width is the element's own, not the viewport's, so there is no window
+ * dimension to fall back to.
+ *
+ * Measured in a LAYOUT effect: the hook re-pins the track to the measured
+ * offsets in a second layout pass, and both land before the browser paints,
+ * so a drawer that mounts `collapsed` never flashes a stale, fallback-width
+ * offset for one frame. (Measured via `offsetWidth`, so jsdom stays on the
+ * fallback forever — which is exactly what the DOM tests pin.)
+ */
+function useMeasuredWidth(
+  ref: RefObject<HTMLElement | null>,
+  fallbackWidth: number = SIDE_PANEL_FALLBACK_WIDTH,
+): number {
+  const [width, setWidth] = useState(() => fallbackWidth)
+
+  useLayoutEffect(() => {
     const measure = () => {
       const measured = ref.current?.offsetWidth ?? 0
       if (measured > 0) {

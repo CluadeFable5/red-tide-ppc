@@ -17,13 +17,14 @@
  *     rightward = towards open`) with two anchors and no underlay;
  *   - forcing the drawer through the sheet's types would mean sign-flipping
  *     adapters around every call, which is exactly how a snap direction gets
- *     quietly inverted. The sheet files are also frozen — this interaction
- *     must not risk them.
+ *     quietly inverted. (The sheet files were likewise frozen at the time —
+ *     this interaction could not risk them. The bottom sheet has since been
+ *     removed entirely; this module is the pattern's surviving home.)
  *
  * So this module re-implements the *pattern* (project-then-snap, flick
  * guarantee, clamp-before-project) with X semantics, keeps the same tuning
- * constants so the two gestures feel like one app, and reuses `isDragTail`
- * from `sheetAnchors.ts` directly — that helper is axis-agnostic.
+ * constants so the two gestures feel like one app, and owns `isDragTail` —
+ * the axis-agnostic drag-tail guard defined at the bottom of this file.
  *
  * Like the sheet maths, everything here is pure arithmetic with no `motion`
  * and no DOM imports, for the same reason: snap branches are unit-tested
@@ -47,6 +48,21 @@
  */
 
 export type SidePanelState = 'open' | 'collapsed'
+
+/**
+ * Which screen edge the panel is pinned to.
+ *
+ * `left`  — the advisory drawer's original orientation: `open` is 0 and
+ *   `collapsed` is `-width` (the track slides leftwards out of the window).
+ * `right` — the top-right control column's orientation: `open` is 0 and
+ *   `collapsed` is `+width` (the track slides rightwards into the edge).
+ *
+ * The state ORDER is unchanged — `collapsed` still sorts before `open` — so
+ * every search/tie-break rule below is identical on both edges; only the
+ * sign of the collapsed offset and the direction a flick must travel differ,
+ * and both are derived from the offsets themselves rather than restated.
+ */
+export type SidePanelEdge = 'left' | 'right'
 
 /** Left-to-right. Also the order the snap search uses, which decides ties. */
 export const SIDE_PANEL_STATE_ORDER: readonly SidePanelState[] = [
@@ -94,19 +110,28 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * Offsets for a measured gauge card width. Degenerate widths (unmounted,
- * jsdom, SSR) fall back to `SIDE_PANEL_FALLBACK_WIDTH` so the collapsed
- * offset is always a sane negative number, never NaN or 0 (0 would make both
- * anchors coincide and the drawer unsnappable).
+ * Offsets for a measured card width. Degenerate widths (unmounted,
+ * jsdom, SSR) fall back so the collapsed offset is always a sane non-zero
+ * number, never NaN or 0 (0 would make both anchors coincide and the drawer
+ * unsnappable).
+ *
+ * On the `left` edge `collapsed` is `-width`; on the `right` edge it is
+ * `+width` — the track slides into its own edge either way.
  */
-export function sidePanelOffsets(cardWidth: number): SidePanelOffsets {
-  const width =
-    Number.isFinite(cardWidth) && cardWidth > 0
-      ? cardWidth
+export function sidePanelOffsets(
+  cardWidth: number,
+  edge: SidePanelEdge = 'left',
+  fallbackWidth: number = SIDE_PANEL_FALLBACK_WIDTH,
+): SidePanelOffsets {
+  const fallback =
+    Number.isFinite(fallbackWidth) && fallbackWidth > 0
+      ? fallbackWidth
       : SIDE_PANEL_FALLBACK_WIDTH
+  const width =
+    Number.isFinite(cardWidth) && cardWidth > 0 ? cardWidth : fallback
   return {
     open: 0,
-    collapsed: -width,
+    collapsed: edge === 'left' ? -width : width,
   }
 }
 
@@ -119,24 +144,38 @@ export function sidePanelOffsets(cardWidth: number): SidePanelOffsets {
  * drag position, including elastic overshoot (clamped at both ends). The
  * drawer derives this from the same motion value that positions the track,
  * which is what makes "no content outside the visible bounds" structural.
+ *
+ * `left`  — track offset is 0..-width, so the remainder is `width + x`.
+ * `right` — track offset is 0..+width, so the remainder is `width - x`.
  */
-export function drawerWindowWidth(cardWidth: number, offset: number): number {
+export function drawerWindowWidth(
+  cardWidth: number,
+  offset: number,
+  edge: SidePanelEdge = 'left',
+): number {
   const width =
     Number.isFinite(cardWidth) && cardWidth > 0
       ? cardWidth
       : SIDE_PANEL_FALLBACK_WIDTH
   const x = Number.isFinite(offset) ? offset : 0
-  return Math.min(Math.max(width + x, 0), width)
+  const remainder = edge === 'left' ? width + x : width - x
+  return Math.min(Math.max(remainder, 0), width)
 }
 
-/** Clamp an offset into the draggable range (collapsed is the floor, open the ceiling). */
+/** Clamp an offset into the draggable range (collapsed at one end, open at the other). */
 export function clampSideOffset(
   offset: number,
   offsets: SidePanelOffsets,
 ): number {
   if (!Number.isFinite(offset)) return offsets.open
-  // `collapsed` has the smaller (negative) offset; `open` is 0.
-  return clamp(offset, offsets.collapsed, offsets.open)
+  // Sign-agnostic: `collapsed` is the smaller offset on a left-drawer and the
+  // larger on a right-drawer, so the range is read off the offsets rather
+  // than assumed.
+  return clamp(
+    offset,
+    Math.min(offsets.collapsed, offsets.open),
+    Math.max(offsets.collapsed, offsets.open),
+  )
 }
 
 /**
@@ -185,7 +224,7 @@ function stateAt(index: number): SidePanelState {
 /**
  * The state a released gesture should settle on.
  *
- * Two regimes, mirroring `resolveSheetAnchor`:
+ * Two regimes, mirroring the retired sheet resolver:
  *
  *  SLOW RELEASE — "where is it?" Clamp away the elastic overshoot, project the
  *  release point forward with `velocity`, and take the nearest state. A slow
@@ -209,8 +248,13 @@ export function resolveSidePanelAnchor({
   const projected = from + speed * projectionSeconds
 
   if (Math.abs(speed) >= flickVelocity) {
-    // Right (+1) travels towards `open`; left (-1) towards `collapsed`.
-    const step = speed > 0 ? 1 : -1
+    // Which state a positive velocity moves towards depends on the pinned
+    // edge: a left-drawer rests `open` at the larger offset (0) and tucks
+    // negative, a right-drawer tucks positive, so `collapsed` holds the
+    // larger offset there. Derived from the offsets — never restated by the
+    // caller, so a mirrored drawer cannot silently invert the flick map.
+    const openIsHigh = offsets.open >= offsets.collapsed
+    const step = (speed > 0 ? 1 : -1) * (openIsHigh ? 1 : -1)
     const currentIndex = SIDE_PANEL_STATE_ORDER.indexOf(
       nearestSidePanelState(from, offsets),
     )
@@ -231,4 +275,21 @@ export function resolveSidePanelAnchor({
 /** The other state — what a tap on the grab tab switches to. */
 export function toggleSidePanelState(state: SidePanelState): SidePanelState {
   return state === 'open' ? 'collapsed' : 'open'
+}
+
+/**
+ * Should a click on a grab tab or strip button be ignored because it is the
+ * tail of a drag?
+ *
+ * Only for pointer-originated clicks. `MouseEvent.detail` is 0 for activation
+ * that did not come from a pointer — keyboard `Enter`/`Space` on the focused
+ * button, assistive tech, `element.click()` — and those must always work, or
+ * a keyboard user is locked out of the tab the moment anything has been
+ * dragged. Found in the browser pass: a drawer was dragged, the handle was
+ * activated with the keyboard, and nothing happened. Axis-agnostic — both
+ * right-edge drawers share it (it arrived here from the retired bottom-sheet
+ * maths, where the same guard protected vertical drags).
+ */
+export function isDragTail(didDrag: boolean, detail: number): boolean {
+  return didDrag && detail !== 0
 }

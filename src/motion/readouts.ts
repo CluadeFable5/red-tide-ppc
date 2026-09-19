@@ -12,7 +12,7 @@
  */
 
 import type { ZoneStatus } from '../types'
-import type { SheetAnchor } from './sheetAnchors'
+import type { SidePanelState } from './sidePanelAnchors'
 
 /**
  * The one line the sheet shows at peek: `"6 zones · No advisories"`.
@@ -27,21 +27,18 @@ export function zoneSummaryLine(zoneCount: number, advisoryCount: number): strin
   return `${zones} · ${advisoryCount} under advisory`
 }
 
-/** `02 / 03` style position readout for the sheet's instrument strip. */
-export function anchorReadout(anchor: SheetAnchor): string {
-  const index = anchor === 'peek' ? 1 : anchor === 'mid' ? 2 : 3
-  return `${String(index).padStart(2, '0')} / 03`
-}
-
-/** What a tap on the handle will do next — used for the button's label. */
-export const ANCHOR_ACTION_LABEL: Record<SheetAnchor, string> = {
-  peek: 'Show advisories and zones',
-  mid: 'Show the full zone list',
-  full: 'Collapse to the summary',
+/**
+ * `01 / 02` style position readout for a two-state side drawer — the same
+ * instrument language as the sheet's `01 / 03` strip, adapted to the two
+ * detents a drawer has. `collapsed` is the first position, `open` the
+ * second, mirroring how `peek` was the sheet's first.
+ */
+export function sidePanelReadout(state: SidePanelState): string {
+  return state === 'collapsed' ? '01 / 02' : '02 / 02'
 }
 
 /**
- * Most severe status currently present, for the closed sheet's single pip.
+ * Most severe status currently present, for the closed drawer's single pip.
  *
  * Severity order is advisory > unconfirmed > safe, matching the domain: a
  * confirmed bloom outranks a report that still needs review, and both outrank
