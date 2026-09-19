@@ -303,6 +303,18 @@ describe('SEED_ZONES', () => {
       ).toBe(false)
     }
   })
+
+  it('pins the irawan footprint to the bay-mouth far shore', () => {
+    // Explicit bbox for the 7th zone: the Iwahig approach (S) to the
+    // estuary's east wall (N), valley shore (W) to the bay-mouth water (E).
+    // Fails if a vertex edit ever shifts the zone's footprint.
+    const irawan = SEED_ZONES.find((zone) => zone.id === 'irawan')
+    expect(irawan, 'irawan must exist').toBeDefined()
+    const lats = irawan!.polygon.map(([lat]) => lat)
+    const lngs = irawan!.polygon.map(([, lng]) => lng)
+    expect([Math.min(...lats), Math.max(...lats)]).toEqual([9.744728, 9.778611])
+    expect([Math.min(...lngs), Math.max(...lngs)]).toEqual([118.691778, 118.716092])
+  })
 })
 
 // --------------------------------------------------------------------------
