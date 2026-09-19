@@ -208,3 +208,5 @@ main().catch((err) => {
   console.error('FETCH FAILED:', err?.message ?? err)
   process.exit(1)
 })
+
+// Cache destination: scripts/coastline-cache/osm-coastline.json (committed by CI).
