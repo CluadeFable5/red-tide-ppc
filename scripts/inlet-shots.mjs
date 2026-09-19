@@ -291,7 +291,7 @@ try {
   await frameTarget(page, ...TARGETS.north)
   await markTruth()
   await page.screenshot({ path: tag('north') })
-  await console.log(`shot ${tag('north')}`)
+  console.log(`shot ${tag('north')}`)
 
   await frameTarget(page, ...TARGETS.wide)
   await markTruth()
