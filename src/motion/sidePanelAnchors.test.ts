@@ -4,9 +4,9 @@ import {
   SIDE_PANEL_FLICK_VELOCITY,
   SIDE_PANEL_PROJECTION_SECONDS,
   SIDE_PANEL_STATE_ORDER,
-  SIDE_PANEL_TAB_VISIBLE,
   type SidePanelOffsets,
   clampSideOffset,
+  drawerWindowWidth,
   nearestSidePanelState,
   resolveSidePanelAnchor,
   sidePanelOffsets,
@@ -15,50 +15,92 @@ import {
 
 /**
  * The drawer's snap maths, pinned the same way the sheet's is: a wrong branch
- * shows up as a panel that "sticks" under a fast flick, on a phone, in front
+ * shows up as a drawer that "sticks" under a fast flick, on a phone, in front
  * of people. See `sheetAnchors.test.ts` for the vertical equivalent.
  */
 
-const WIDTH = 264
+const WIDTH = 172
 const OFFSETS = sidePanelOffsets(WIDTH)
 
 describe('sidePanelOffsets', () => {
-  it('rests open at 0 and tucks collapsed off-screen left', () => {
+  it('rests open at 0 and tucks the card fully out of the window when collapsed', () => {
     expect(OFFSETS.open).toBe(0)
-    expect(OFFSETS.collapsed).toBe(-(WIDTH - SIDE_PANEL_TAB_VISIBLE))
+    expect(OFFSETS.collapsed).toBe(-WIDTH)
     expect(OFFSETS.collapsed).toBeLessThan(0)
   })
 
-  it('leaves exactly the grab tab visible when collapsed', () => {
-    // The visible remainder is the tab and nothing else: the collapsed offset
-    // plus the panel width must equal the tab width.
-    expect(WIDTH + OFFSETS.collapsed).toBe(SIDE_PANEL_TAB_VISIBLE)
+  it('leaves no card visible when collapsed — the window shrinks to 0 with it', () => {
+    // The collapsed offset plus the card width is exactly 0: the card sits
+    // fully outside the clip window, and the window itself is width 0 — only
+    // the grab tab (a static sibling of the window) shows.
+    expect(WIDTH + OFFSETS.collapsed).toBe(0)
+    expect(drawerWindowWidth(WIDTH, OFFSETS.collapsed)).toBe(0)
   })
 
-  it('tucks a wider panel further, so the tab still lands at the edge', () => {
-    const narrow = sidePanelOffsets(200)
-    const wide = sidePanelOffsets(320)
+  it('tucks a wider card further, so a wide card still hides fully', () => {
+    const narrow = sidePanelOffsets(140)
+    const wide = sidePanelOffsets(220)
     expect(wide.collapsed).toBeLessThan(narrow.collapsed)
-    expect(200 + narrow.collapsed).toBe(SIDE_PANEL_TAB_VISIBLE)
-    expect(320 + wide.collapsed).toBe(SIDE_PANEL_TAB_VISIBLE)
+    expect(140 + narrow.collapsed).toBe(0)
+    expect(220 + wide.collapsed).toBe(0)
   })
 
   it('falls back to a sane negative offset when the width is unmeasured', () => {
     for (const bad of [0, -50, Number.NaN, Number.POSITIVE_INFINITY]) {
       const offsets = sidePanelOffsets(bad)
       expect(offsets.open).toBe(0)
-      expect(offsets.collapsed).toBe(
-        -(SIDE_PANEL_FALLBACK_WIDTH - SIDE_PANEL_TAB_VISIBLE),
-      )
+      expect(offsets.collapsed).toBe(-SIDE_PANEL_FALLBACK_WIDTH)
       expect(offsets.collapsed).toBeLessThan(0)
     }
   })
 
-  it('falls back when the width cannot even hold the tab', () => {
-    // A width narrower than the tab would put `collapsed` at or right of 0 —
-    // both anchors coinciding, and the panel unsnappable.
-    const offsets = sidePanelOffsets(SIDE_PANEL_TAB_VISIBLE)
-    expect(offsets.collapsed).toBeLessThan(0)
+  it('honours any positive measured width — small cards clip the same', () => {
+    // No minimum-width gate: the window clips whatever the track holds.
+    expect(sidePanelOffsets(32).collapsed).toBe(-32)
+  })
+})
+
+describe('drawerWindowWidth', () => {
+  it('fits the whole card when open and shrinks to 0 when collapsed', () => {
+    expect(drawerWindowWidth(WIDTH, OFFSETS.open)).toBe(WIDTH)
+    expect(drawerWindowWidth(WIDTH, OFFSETS.collapsed)).toBe(0)
+  })
+
+  it('shows exactly the visible remainder mid-drag', () => {
+    expect(drawerWindowWidth(WIDTH, -WIDTH / 2)).toBe(WIDTH / 2)
+    expect(drawerWindowWidth(WIDTH, -WIDTH / 4)).toBe((WIDTH * 3) / 4)
+  })
+
+  it('never exceeds the card or drops below 0 at any drag position', () => {
+    // The clip guarantee, swept across every integer drag position including
+    // elastic overshoot past both anchors: the window is always a valid
+    // visible remainder, so the card can never paint outside it.
+    for (let offset = OFFSETS.collapsed - 120; offset <= OFFSETS.open + 120; offset += 1) {
+      const width = drawerWindowWidth(WIDTH, offset)
+      expect(width).toBeGreaterThanOrEqual(0)
+      expect(width).toBeLessThanOrEqual(WIDTH)
+    }
+  })
+
+  it('tracks the drag monotonically — no jumps mid-gesture', () => {
+    let previous = -1
+    for (let offset = OFFSETS.collapsed; offset <= OFFSETS.open; offset += 1) {
+      const width = drawerWindowWidth(WIDTH, offset)
+      expect(width).toBeGreaterThanOrEqual(previous)
+      previous = width
+    }
+  })
+
+  it('clamps elastic overshoot past either anchor', () => {
+    expect(drawerWindowWidth(WIDTH, OFFSETS.collapsed - 260)).toBe(0)
+    expect(drawerWindowWidth(WIDTH, OFFSETS.open + 260)).toBe(WIDTH)
+  })
+
+  it('falls back safely on degenerate input rather than NaN', () => {
+    expect(drawerWindowWidth(0, 0)).toBe(SIDE_PANEL_FALLBACK_WIDTH)
+    expect(drawerWindowWidth(Number.NaN, Number.NaN)).toBe(
+      SIDE_PANEL_FALLBACK_WIDTH,
+    )
   })
 })
 
@@ -149,10 +191,12 @@ describe('resolveSidePanelAnchor', () => {
   })
 
   it('does not treat a below-threshold shove as a flick', () => {
+    // A slow nudge stays a slow release: it projects a short way and settles
+    // back open, rather than being flung to collapsed.
     expect(
       resolveSidePanelAnchor({
         offset: OFFSETS.open - 2,
-        velocity: -(SIDE_PANEL_FLICK_VELOCITY - 1),
+        velocity: -100,
         offsets: OFFSETS,
       }),
     ).toBe('open')

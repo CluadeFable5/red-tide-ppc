@@ -3,9 +3,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { RegistrationMarks, Scanline } from '../components/Ambient'
+import { AdvisoryDrawer } from '../components/AdvisoryDrawer'
 import { DemoBanner } from '../components/DemoBanner'
 import { Header } from '../components/Header'
-import { StatusPanel } from '../components/StatusPanel'
+import { StatusKey } from '../components/StatusKey'
 import { MapLoadingOverlay } from '../components/LoadingState'
 import { Map } from '../components/Map'
 import { Notice } from '../components/Notice'
@@ -25,7 +26,8 @@ import type { Zone, ZoneStatus } from '../types'
  *  2. The map's *underlay* wrapper, which scales/rounds/darkens the map as the
  *     sheet rises. This is what makes the sheet read as a surface sliding over
  *     the map instead of a panel glued to the bottom of the screen.
- *  3. Floating chrome: the app bar, the status pill row, the advisory gauge.
+ *  3. Floating chrome: the app bar, the fixed status key (count pills), and
+ *     the advisory-signal drawer (gauge card + grab tab).
  *  4. The zone sheet, at peek / mid / full — detents 15% / 50% / 88%.
  *  5. Modals: the report form, then toasts.
  *
@@ -189,7 +191,8 @@ export function MapPage() {
 
       {/* ------------------------------------------------------------------
           Layer 3: floating chrome.
-          - Status panel fades early (before mid) so nothing half-covered.
+          - Status key + advisory drawer fade early (before mid) so nothing
+            half-covered.
           - Header fades late (only at full) — visible at mid/peek, hidden at
             full. This avoids stale-chrome: when dragging down from full to
             mid/peek, header fades back in promptly by 70% progress (headerOpacity
@@ -293,13 +296,16 @@ export function MapPage() {
         />
       </motion.div>
 
-      <StatusPanel
-        counts={statusCounts}
+      {/* Two separate elements: the fixed pills row, and the swipeable gauge
+          drawer beneath it. The pills are never part of the drawer — they
+          stay fixed while the drawer tucks. */}
+      <AdvisoryDrawer
         advisory={statusCounts.advisory}
         zones={zones.length}
         pending={pendingTotal}
         chromeOpacity={sheet.chromeOpacity}
       />
+      <StatusKey counts={statusCounts} chromeOpacity={sheet.chromeOpacity} />
 
       {!zonesReady && <MapLoadingOverlay />}
 

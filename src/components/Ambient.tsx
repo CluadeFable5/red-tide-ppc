@@ -11,7 +11,9 @@
  * under `prefers-reduced-motion`.
  *
  * (The advisory-signal gauge used to live here as `TideGauge`; it now lives
- * inside the collapsible `StatusPanel`, which owns the top-left chrome.)
+ * in the collapsible `AdvisoryDrawer`, under the fixed `StatusKey` pills row.
+ * No restore needed — the split reuses the same gauge markup and chip markup
+ * in their new homes, and nothing else was deleted with them.)
  *
  * Both are pointer-events-none and sit under the sheet, so neither can intercept
  * a map gesture or outlive its usefulness at the full anchor.

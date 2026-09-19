@@ -1,17 +1,17 @@
 /**
- * Anchor maths for the two-state status side panel.
+ * Anchor maths for the two-state advisory drawer.
  *
  * WHY THIS FILE EXISTS — AND WHY IT IS A MIRROR, NOT A REUSE
  * -----------------------------------------------------------
- * The status panel (count pills + advisory-signal gauge, top-left of the map)
- * collapses horizontally like a native drawer: `open` ↔ `collapsed`. The feel
- * target is the zone sheet's snap — velocity-aware, with a guaranteed flick
- * step — but the sheet's controller (`sheetAnchors.ts` / `useZoneSheet.ts`)
- * cannot be reused directly:
+ * The advisory-signal gauge card (top-left of the map, under the fixed status
+ * key) collapses horizontally like a native drawer: `open` ↔ `collapsed`.
+ * The feel target is the zone sheet's snap — velocity-aware, with a
+ * guaranteed flick step — but the sheet's controller (`sheetAnchors.ts` /
+ * `useZoneSheet.ts`) cannot be reused directly:
  *
  *   - its offsets are derived from *viewport-height complements* for a
- *     viewport-tall panel pinned to the top; the drawer is a fixed-width card
- *     whose collapsed offset derives from its own measured width;
+ *     viewport-tall panel pinned to the top; the drawer's collapsed offset
+ *     derives from the gauge card's own measured width;
  *   - its sign convention is Y (`positive = downward = towards peek`) with
  *     three anchors and underlay progress; the drawer is X (`positive =
  *     rightward = towards open`) with two anchors and no underlay;
@@ -31,14 +31,19 @@
  *
  * COORDINATE SYSTEM
  * -----------------
- * Offsets are `translateX` in px for a panel pinned to the *left* of the
- * viewport:
+ * Offsets are the gauge card track's `translateX` in px. The track slides
+ * inside a clip window pinned to the left edge (see `AdvisoryDrawer.tsx`):
  *
- *   offset = 0          → fully visible (the `open` rest position)
- *   offset = collapsed  → tucked off-screen left, leaving only the grab tab
- *                         (`SIDE_PANEL_TAB_VISIBLE` px) reachable at the edge
+ *   offset = 0          → card fully visible (the `open` rest position)
+ *   offset = collapsed  → card slid fully out of the window to the left; the
+ *                         window itself has shrunk to width 0, so only the
+ *                         grab tab — a static sibling of the window — shows.
  *
- * `collapsed` is always negative; `open` is always 0.
+ * `collapsed` is always exactly `-cardWidth`; `open` is always 0. The clip
+ * window's width is derived from the SAME motion value as the track's
+ * position (`drawerWindowWidth`), so the card can never paint outside the
+ * window bounds at any drag position — mid-drag clipping is structural, not
+ * something the viewport edge has to provide.
  */
 
 export type SidePanelState = 'open' | 'collapsed'
@@ -50,22 +55,15 @@ export const SIDE_PANEL_STATE_ORDER: readonly SidePanelState[] = [
 ]
 
 /**
- * How much of the panel stays on screen when collapsed (px).
- *
- * This is the grab tab and nothing else. It MUST match the tab's rendered
- * width (`w-8` = 32px in `StatusPanel.tsx`): smaller and the tab clips,
- * larger and a sliver of dead card edge hangs on screen.
- */
-export const SIDE_PANEL_TAB_VISIBLE = 32
-
-/**
- * Panel width assumed when layout is unavailable (jsdom, SSR).
+ * Gauge card width assumed when layout is unavailable (jsdom, SSR).
  *
  * Only the collapsed offset derives from it, and only until the first real
  * measurement lands — `useSidePanel` re-pins to the measured offset on mount.
- * Roughly: 172px gauge + pills overhang + 32px tab + gaps.
+ * It MUST match the gauge card's rendered width (`w-[172px]` in
+ * `AdvisoryDrawer.tsx`): the collapsed offset is exactly `-cardWidth`, and a
+ * mismatch would leave a sliver of card visible (or over-tuck, harmlessly).
  */
-export const SIDE_PANEL_FALLBACK_WIDTH = 264
+export const SIDE_PANEL_FALLBACK_WIDTH = 172
 
 /**
  * How far a release velocity is allowed to *carry* the panel, in seconds.
@@ -96,20 +94,39 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * Offsets for a measured panel width. Degenerate widths (unmounted, jsdom,
- * SSR) fall back to `SIDE_PANEL_FALLBACK_WIDTH` so the collapsed offset is
- * always a sane negative number, never NaN or 0 (0 would make both anchors
- * coincide and the panel unsnappable).
+ * Offsets for a measured gauge card width. Degenerate widths (unmounted,
+ * jsdom, SSR) fall back to `SIDE_PANEL_FALLBACK_WIDTH` so the collapsed
+ * offset is always a sane negative number, never NaN or 0 (0 would make both
+ * anchors coincide and the drawer unsnappable).
  */
-export function sidePanelOffsets(panelWidth: number): SidePanelOffsets {
+export function sidePanelOffsets(cardWidth: number): SidePanelOffsets {
   const width =
-    Number.isFinite(panelWidth) && panelWidth > SIDE_PANEL_TAB_VISIBLE
-      ? panelWidth
+    Number.isFinite(cardWidth) && cardWidth > 0
+      ? cardWidth
       : SIDE_PANEL_FALLBACK_WIDTH
   return {
     open: 0,
-    collapsed: -(width - SIDE_PANEL_TAB_VISIBLE),
+    collapsed: -width,
   }
+}
+
+/**
+ * Width of the drawer's clip window for a card width and track offset.
+ *
+ * The window shrinks in lockstep with the track: at `open` it fits the whole
+ * card, at `collapsed` it is 0, and mid-drag it is exactly the visible
+ * remainder — so the card is continuously clipped by the window at every
+ * drag position, including elastic overshoot (clamped at both ends). The
+ * drawer derives this from the same motion value that positions the track,
+ * which is what makes "no content outside the visible bounds" structural.
+ */
+export function drawerWindowWidth(cardWidth: number, offset: number): number {
+  const width =
+    Number.isFinite(cardWidth) && cardWidth > 0
+      ? cardWidth
+      : SIDE_PANEL_FALLBACK_WIDTH
+  const x = Number.isFinite(offset) ? offset : 0
+  return Math.min(Math.max(width + x, 0), width)
 }
 
 /** Clamp an offset into the draggable range (collapsed is the floor, open the ceiling). */
