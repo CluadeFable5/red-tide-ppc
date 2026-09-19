@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import { motion, useReducedMotion, useTransform } from 'motion/react'
 import { formatRelative } from '../lib/format'
 import { ZONE_STATUS_ORDER } from '../lib/status'
 import {
@@ -115,6 +115,15 @@ export function ZoneDrawer({
 
   const windowWidth = useClipWindowWidth(panel.offsetX, panel.panelWidth, panel.edge)
 
+  // The tab-to-window gap, derived from the same clip-window motion value: 0
+  // when collapsed — so the tab sits flush with the column's right edge,
+  // exactly like the zoom buttons — ramping to the full 6px as soon as the
+  // window cracks open. A static `gap` on the row would persist while the
+  // window is 0px wide and leave the collapsed tab 6px off the edge. This is
+  // a margin, not a transform, so the tab keeps its backdrop blur on a
+  // never-transformed layer.
+  const tabGap = useTransform(windowWidth, [0, 8], [0, 6], { clamp: true })
+
   // Staggered entrance once — replays the sheet's one-time list reveal the
   // first time the drawer opens.
   const [revealToken, setRevealToken] = useState(0)
@@ -186,7 +195,7 @@ export function ZoneDrawer({
 
   return (
     <div
-      className="pointer-events-none flex min-h-0 flex-1 flex-row items-start justify-end gap-1.5"
+      className="pointer-events-none flex min-h-0 flex-1 flex-row items-start justify-end"
       role="region"
       aria-label="Advisory and zone list"
       data-testid="zone-drawer"
@@ -209,6 +218,7 @@ export function ZoneDrawer({
         aria-label={action}
         title={action}
         data-testid="zone-drawer-tab"
+        style={{ marginRight: tabGap }}
         className="pointer-events-auto flex w-11 shrink-0 select-none flex-col items-center gap-2 self-start rounded-lg border border-line bg-ink-2/88 py-3 backdrop-blur-md transition-colors [touch-action:none] hover:border-accent/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <StatusPip

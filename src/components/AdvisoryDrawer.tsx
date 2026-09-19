@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import { motion, useReducedMotion, useTransform } from 'motion/react'
 import {
   advisoryShare,
   formatPercent,
@@ -123,6 +123,15 @@ export function AdvisoryDrawer({ advisory, zones, pending }: AdvisoryDrawerProps
   // position (shared hook — see `useClipWindowWidth` in useSidePanel.ts).
   const windowWidth = useClipWindowWidth(panel.offsetX, panel.panelWidth, panel.edge)
 
+  // The tab-to-window gap, derived from the same clip-window motion value: 0
+  // when collapsed — so the tab sits flush with the column's right edge,
+  // exactly like the zoom buttons — ramping to the full 6px as soon as the
+  // window cracks open. A static `gap` on the row would persist while the
+  // window is 0px wide and leave the collapsed tab 6px off the edge. This is
+  // a margin, not a transform, so the tab keeps its backdrop blur on a
+  // never-transformed layer (see the clip architecture notes above).
+  const tabGap = useTransform(windowWidth, [0, 8], [0, 6], { clamp: true })
+
   const handleTabClick = useCallback(
     (event: React.MouseEvent) => {
       if (isDragTail(panel.didDrag(), event.detail)) return
@@ -150,7 +159,7 @@ export function AdvisoryDrawer({ advisory, zones, pending }: AdvisoryDrawerProps
 
   return (
     <div
-      className="pointer-events-none flex items-stretch justify-end gap-1.5"
+      className="pointer-events-none flex items-stretch justify-end"
       role="region"
       aria-label="Advisory signal"
       data-testid="advisory-drawer"
@@ -173,6 +182,7 @@ export function AdvisoryDrawer({ advisory, zones, pending }: AdvisoryDrawerProps
         aria-label={tabLabel}
         title={tabLabel}
         data-testid="advisory-drawer-tab"
+        style={{ marginRight: tabGap }}
         className="pointer-events-auto flex w-11 shrink-0 select-none flex-col items-center justify-center gap-2 self-start rounded-lg border border-line bg-ink-2/88 py-3 backdrop-blur-md transition-colors [touch-action:none] hover:border-accent/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <motion.svg
