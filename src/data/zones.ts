@@ -6,40 +6,39 @@ import type { LatLng, ZoneStatus } from '../types'
  * These are machine-traced, APPROXIMATE coastal areas — good enough to tell a
  * fisherman "this is your bay", not a survey boundary.
  *
- * HOW THE SHAPES ARE BUILT (regenerated 2026-09-19 by
+ * HOW THE SHAPES ARE BUILT (regenerated 2026-09-20 by
  * scripts/generate-zones.ts from real OSM coastline data)
  * -------------------------------------------------------
  * Every zone is a closed coastal ribbon polygon representing a nearshore band
- * of shallow water 350–400 m wide:
+ * based on a 350–400 m shoreline buffer, not measured bathymetry:
  *
  *   - the LANDWARD edge is a dense run of real OpenStreetMap coastline nodes
- *     (40–190 vertices per zone, Douglas-Peucker simplified at 8 m), tracing
+ *     (37–202 vertices per zone, Douglas-Peucker simplified at 8 m), tracing
  *     the natural shore contour — verified to stay within 20 m of the real
  *     coastline everywhere (see zones.test.ts and src/data/coastline.ts);
- *   - the SEAWARD edge is the flat-cap-cut, water-side arc of a geodesic line
- *     buffer of the landward edge (turf), so it is a smooth parallel offset at
- *     exactly the band width everywhere — around piers, corners and
- *     headlands alike — simplified to a lower vertex density at 15 m.
+ *   - the SEAWARD edge is the water-side arc of a geodesic line buffer of
+ *     the landward edge (turf), simplified at 15 m. Opposing banks bound the
+ *     water where the inlet is too narrow for two separate full-width bands.
  *
  * Where two strips face the same way they share their end-cap vertex exactly,
  * so they tile edge to edge (honda-inner | honda-outer at [9.893315,
- * 118.748879], N of the Sta. Lourdes wharf). Where the coast turns — at the
- * wharf itself (E-facing strip meets N-facing strip) and at the San Jose
- * headland (pp-bay's N cap, where the coast reverses onto the bay's far
- * shore) — each zone takes its own natural cap and a small wedge of open
- * water stays uncovered between pp-bay and irawan.
+ * 118.748879], N of the Sta. Lourdes wharf). At the wharf's coast turn the
+ * zones retain their natural caps. pp-bay follows both banks around the
+ * northern apex, returning south only to [9.7712302, 118.7161899]. This
+ * covers the verified nearshore patch without overlapping irawan.
+ * The wider bay-mouth gap between pp-bay and irawan is intentionally unfilled.
  *
- * Shoreline sources: OSM API and Overpass (re-fetched 2026-09-19 by CI, see
+ * Shoreline sources: OSM API and Overpass (re-fetched 2026-09-20 by CI, see
  * scripts/fetch-coastline.mjs; raw cache committed at
  * scripts/coastline-cache/osm-coastline.json). Main ways per zone:
  *
  *   pp-bay        1201582689, 1201581683, 1201581684 (Bancao-Bancao shore),
  *                 4247188 + node 1044151904 (port basin and city waterfront),
- *                 1529960715 + apex node of 1529960721 (headland point)
+ *                 1529960715 + 1529960721 (northern apex), 1529960722
+ *                 (opposite bank south to node 368426821; way indices 88–72)
  *   irawan        1529960722 (bay-mouth far shore: Iwahig approach N up
  *                 the Irawan valley side, through the river-mouth estuary
- *                 bite, capped high on the east wall short of the pp-bay
- *                 seam)
+ *                 bite, retaining its original east-wall cap at way index 68)
  *   sta-lourdes   62049956 (peninsula east coast, Blue Palawan -> wharf and
  *                 pier complex), 1530225667 (harbour shore N of the pier)
  *   honda-inner   1530225665, 1530225667, 1530236382 (bay west shore)
@@ -57,8 +56,9 @@ import type { LatLng, ZoneStatus } from '../types'
  *   Blue Palawan Beach (city waterfront) 9.7672 N, 118.7716 E
  *   Antonio Bautista Golf Course         9.7451 N, 118.7649 E
  *   San Manuel (barangay, N of city)     9.7789 N, 118.7584 E
- *   San Jose headland apex (pp-bay N cap) 9.7877 N, 118.7194 E
- *   Irawan estuary wall (irawan N cap)    9.7720 N, 118.7124 E
+ *   Northern apex (pp-bay bank turn)     9.7877 N, 118.7194 E
+ *   Opposite-bank point (pp-bay end cap) 9.7712302 N, 118.7161899 E
+ *   Irawan estuary wall (irawan end cap) 9.7720 N, 118.7124 E
  *   Irawan (barangay, W of the bay)       9.8012 N, 118.6923 E
  *   Tagburos (barangay)                  9.8198 N, 118.7410 E
  *   Santa Lourdes (barangay)             9.8345 N, 118.7255 E
@@ -103,15 +103,18 @@ export const SEED_ZONES: SeedZone[] = [
     id: 'pp-bay',
     name: 'Puerto Princesa Bay (City Proper)',
     description:
-      'The city bay west of the poblacion — Bancao-Bancao, the port side and the San Jose shore north to its headland. Where most city market shellfish is landed.',
+      'The city bay west of the poblacion — Bancao-Bancao, the port side and the San Jose shore, around the northern inlet apex and down its opposite bank. Where most city market shellfish is landed.',
     /**
-     * 271 vertices (190 landward / 81 seaward), 400 m coastal band. Landward
+     * 270 vertices (202 landward / 68 seaward), 400 m coastal buffer. Landward
      * edge traces the real OSM coastline from Bancao-Bancao lighthouse
      * northwest past Pristine Beach, the fish-pen fringes, city port basin and
-     * city quay, then along the San Jose shore — NNE past the cove, around the
-     * E-W corner and NNW to the headland apex (within 20 m of it everywhere).
-     * Seaward edge is the smooth parallel buffer contour 400 m out in Puerto
-     * Princesa Bay. Caña islet sits ~630 m off the north shore, outside the band.
+     * city quay, then along the San Jose shore to the northern apex. It wraps
+     * around way 1529960721 and follows 1529960722 south to node 368426821
+     * at [9.7712302, 118.7161899], within 20 m of the mapped shore throughout.
+     * The banks' buffers meet inside the narrow inlet; following both shores
+     * avoids overlapping zones and excludes the opposite-bank land crossed
+     * by the old cap. Only this return-bank stretch is added — not the wider
+     * water between pp-bay and irawan. Caña remains outside the band.
      */
     polygon: [
       [9.72247, 118.768389],
@@ -304,30 +307,29 @@ export const SEED_ZONES: SeedZone[] = [
       [9.785839, 118.719866],
       [9.786396, 118.719957],
       [9.787722, 118.719383],
-      [9.786311, 118.716025],
-      [9.782656, 118.716992],
-      [9.781095, 118.717765],
-      [9.779101, 118.719233],
-      [9.778173, 118.720431],
-      [9.776888, 118.720603],
-      [9.776264, 118.719713],
-      [9.775013, 118.718889],
-      [9.773677, 118.718578],
-      [9.771885, 118.718571],
-      [9.770092, 118.719501],
+      [9.787571, 118.71883],
+      [9.787687, 118.717843],
+      [9.787043, 118.717554],
+      [9.786291, 118.717447],
+      [9.782784, 118.717424],
+      [9.780281, 118.719172],
+      [9.779253, 118.71976],
+      [9.77812, 118.719761],
+      [9.775227, 118.718149],
+      [9.774311, 118.71721],
+      [9.773802, 118.716201],
+      [9.77123, 118.71619],
+      [9.770001, 118.719607],
       [9.769227, 118.720824],
       [9.768234, 118.720962],
       [9.767159, 118.721524],
       [9.766066, 118.721609],
       [9.764882, 118.72215],
-      [9.763964, 118.723082],
-      [9.763379, 118.72405],
-      [9.76307, 118.72534],
+      [9.763701, 118.723469],
+      [9.763166, 118.72468],
       [9.763237, 118.726656],
       [9.764185, 118.728242],
-      [9.765421, 118.729225],
-      [9.766066, 118.730042],
-      [9.767273, 118.730773],
+      [9.766634, 118.730468],
       [9.768232, 118.731074],
       [9.768553, 118.731412],
       [9.767364, 118.731821],
@@ -990,10 +992,11 @@ export const SEED_ZONES: SeedZone[] = [
      * Iwahig approach up the Irawan valley side, through the river-mouth
      * estuary bite to high on its east wall (within 20 m of it everywhere).
      * Seaward edge is the smooth parallel buffer contour 400 m out in the
-     * bay mouth. Capped short of pp-bay's seaward arc: the estuary tip, V,
-     * climb and apex wedge stay uncovered between the zones. The
-     * estuary-mouth reef (way 134867069) sits inside the band; Caña and
-     * islet 645683227 stay outside it.
+     * bay mouth. Its original cap at way index 68 is unchanged. pp-bay now
+     * covers the separate return bank from way index 72 around the northern
+     * apex, without overlapping this band or filling the wider bay gap.
+     * The estuary-mouth coastline ring (way 134867069) sits inside the band;
+     * Caña and islet 645683227 stay outside it.
      */
     polygon: [
       [9.744728, 118.695818],

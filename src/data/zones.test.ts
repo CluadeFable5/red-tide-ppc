@@ -8,7 +8,7 @@ import { COASTLINE_RUNS } from './coastline'
 import { MAP_CENTER, SEED_ZONES, zonesBoundingBox } from './zones'
 
 /**
- * Sanity checks on the hand-drawn polygons. These are approximate by design,
+ * Sanity checks on the generated polygons. These are approximate by design,
  * but they must still be sane: enough vertices, real coordinates, inside the
  * Puerto Princesa area, and starting `safe`.
  */
@@ -254,15 +254,101 @@ describe('SEED_ZONES', () => {
     }
   })
 
-  it('covers water and excludes land around the irawan estuary and the apex wedge', () => {
-    // irawan caps high on the estuary's east wall because pp-bay's seaward
-    // arc rounds through the estuary-tip water: the tip, V, climb and apex
-    // wedge stay uncovered between the two zones (see zones.ts). These
-    // probes pin that seam: estuary/reach water inside the band, valley
-    // land and the wedge outside it, and the offshore features disposed —
-    // the estuary-mouth reef inside, Caña and islet 645683227 outside.
-    // Sides were established from OSM way 1529960722's direction (run heads
-    // NNE with water on its right / E) and cross-checked numerically.
+  it('follows the verified pp-bay return bank on the water side, including the apex', () => {
+    const ring = SEED_ZONES.find((zone) => zone.id === 'pp-bay')!.polygon
+    // Independent OSM fixtures, not copied from the generated polygon:
+    // way 1529960722 indices 72–88, then 1529960721 indices 1–2.
+    // Ordered in OSM direction (toward the apex): water right, land left.
+    const shore: Pt[] = [
+      [9.7712302, 118.7161899],
+      [9.7738016, 118.7162008],
+      [9.7743112, 118.7172104],
+      [9.7752271, 118.7181486],
+      [9.7770685, 118.7192474],
+      [9.7781198, 118.7197608],
+      [9.7792532, 118.7197596],
+      [9.7802813, 118.7191724],
+      [9.7815067, 118.7183361],
+      [9.7827836, 118.7174236],
+      [9.7847609, 118.7173668],
+      [9.7859352, 118.7174947],
+      [9.7862913, 118.7174469],
+      [9.7870425, 118.7175536],
+      [9.7876874, 118.7178433],
+      [9.7876909, 118.7179776],
+      [9.7876980, 118.7182429],
+      [9.7875711, 118.7188303],
+      [9.7877217, 118.7193829],
+    ]
+    expect(COASTLINE_RUNS['pp-bay'].at(-1)).toEqual([9.77123, 118.71619])
+
+    for (let i = 0; i + 1 < shore.length; i++) {
+      const a = shore[i]
+      const b = shore[i + 1]
+      const steps = Math.max(1, Math.ceil(metersBetween(a, b) / 20))
+      // Reverse coverage check: the entire requested shore must be on the
+      // polygon boundary, not merely every drawn edge close to SOME coast.
+      for (let s = 0; s <= steps; s++) {
+        const p: Pt = [
+          a[0] + ((b[0] - a[0]) * s) / steps,
+          a[1] + ((b[1] - a[1]) * s) / steps,
+        ]
+        const distance = Math.min(...ring.map((v, j) =>
+          distToSegmentM(p, v, ring[(j + 1) % ring.length]),
+        ))
+        expect(distance, `return-bank segment ${i} must hug the shore`).toBeLessThanOrEqual(20)
+      }
+
+      // Check BOTH sides of every real segment, including the bank that the
+      // old apex cap crossed. Nearshore coverage must not become land fill.
+      const mid: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+      const lngM = 111_320 * Math.cos((mid[0] * Math.PI) / 180)
+      const dx = (b[1] - a[1]) * lngM
+      const dy = (b[0] - a[0]) * 110_540
+      const len = Math.hypot(dx, dy)
+      const dLat = (-50 * dx) / len / 110_540
+      const dLng = (50 * dy) / len / lngM
+      expect(
+        pointStrictlyInside([mid[0] + dLat, mid[1] + dLng], ring),
+        `water 50 m off return-bank segment ${i} must be covered`,
+      ).toBe(true)
+      expect(
+        pointStrictlyInside([mid[0] - dLat, mid[1] - dLng], ring),
+        `land 50 m behind return-bank segment ${i} must remain outside`,
+      ).toBe(false)
+    }
+  })
+
+  it('adds the verified nearshore patch to pp-bay without infilling the bay or overlapping irawan', () => {
+    const ppBay = SEED_ZONES.find((zone) => zone.id === 'pp-bay')!.polygon
+    const irawan = SEED_ZONES.find((zone) => zone.id === 'irawan')!.polygon
+    for (const p of [
+      [9.7725, 118.717], // original uncovered point, ~88 m from way 1529960722
+      [9.7735, 118.717],
+      [9.7714, 118.7164],
+      [9.7725, 118.71925], // ~335 m offshore, where the banks' buffers meet
+    ] satisfies Pt[]) {
+      expect(pointStrictlyInside(p, ppBay), `${p} must be in pp-bay`).toBe(true)
+      expect(pointStrictlyInside(p, irawan), `${p} must not move into irawan`).toBe(false)
+    }
+    expect(polygonsOverlap(ppBay, irawan)).toBe(false)
+
+    for (const p of [
+      [9.7634, 118.711], // wider bay gap W of Caña
+      [9.766, 118.713],
+      [9.760, 118.708],
+      [9.7634, 118.7195], // Caña islet — no new offshore band
+      [9.7705, 118.7166], // beyond the requested return-bank endpoint
+    ] satisfies Pt[]) {
+      expect(pointStrictlyInside(p, ppBay), `${p} must remain outside pp-bay`).toBe(false)
+      expect(pointStrictlyInside(p, irawan), `${p} must remain outside irawan`).toBe(false)
+    }
+  })
+
+  it('keeps the original irawan estuary footprint separate from the pp-bay return bank', () => {
+    // Irawan's existing run and cap are unchanged. Its estuary/reach water
+    // remains inside, while the separate pp-bay return bank and the wider
+    // bay stay outside. Coastline proximity is not a bathymetric depth claim.
     const irawan = SEED_ZONES.find((zone) => zone.id === 'irawan')
     expect(irawan, 'irawan must exist').toBeDefined()
     const ring = irawan!.polygon
@@ -270,19 +356,18 @@ describe('SEED_ZONES', () => {
       ring.length,
       `irawan polygon has ${ring.length} vertices — expected the generated 65`,
     ).toBe(65)
-    const ppBay = SEED_ZONES.find((zone) => zone.id === 'pp-bay')!.polygon
     // [label, lat, lng, expectInsideIrawan]
     const probes: Array<[string, number, number, boolean]> = [
       ['reach water E of node 16', 9.7505, 118.6959, true],
       ['S band water', 9.746, 118.6975, true],
       ['estuary wall water', 9.7767, 118.7052, true],
       ['hook pocket water', 9.7783, 118.6997, true],
-      ['estuary-mouth reef (134867069)', 9.7736, 118.6993, true],
+      ['estuary-mouth coastline ring (134867069)', 9.7736, 118.6993, true],
       ['valley land W of node 24', 9.759, 118.6885, false],
       ['S land', 9.7455, 118.694, false],
       ['land beyond N cap', 9.7785, 118.712, false],
-      ['apex/climb wedge water', 9.7765, 118.7165, false],
-      ['estuary tip (way node 72)', 9.7712, 118.7162, false],
+      ['land behind the return bank', 9.7765, 118.7165, false],
+      ['pp-bay return-bank water', 9.7725, 118.717, false],
       ['islet 645683227 (concave pocket)', 9.7778, 118.7072, false],
       ['Caña (open bay mouth)', 9.7634, 118.7195, false],
     ]
@@ -291,16 +376,6 @@ describe('SEED_ZONES', () => {
         pointStrictlyInside([lat, lng], ring),
         `${label} (${lat}, ${lng}) must be ${expected ? 'INSIDE' : 'OUTSIDE'} the irawan band`,
       ).toBe(expected)
-    }
-    // the wedge stays uncovered by BOTH zones (the documented seam)
-    for (const [label, lat, lng] of [
-      ['apex/climb wedge water', 9.7765, 118.7165],
-      ['estuary tip (way node 72)', 9.7712, 118.7162],
-    ]) {
-      expect(
-        pointStrictlyInside([lat as number, lng as number], ppBay),
-        `${label} must also be OUTSIDE the pp-bay band (uncovered wedge)`,
-      ).toBe(false)
     }
   })
 

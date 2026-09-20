@@ -314,16 +314,17 @@ Notes:
 
 The polygons in `src/data/zones.ts` are **machine-traced approximations generated from the real OSM coastline** — not survey boundaries and not official BFAR fisheries areas.
 
-Each zone is a **single simple polygon of 63–164 vertices**: a nearshore band whose **landward edge is a dense run of real OpenStreetMap coastline nodes** (verified to stay within 20 m of the actual coastline everywhere) and whose **seaward edge is a true geodesic line buffer of that run, cut flat at the ends**, so it is a smooth parallel offset at exactly the band width — around piers, corners and headlands alike. Both edges are Douglas–Peucker simplified (landward ε = 8 m, seaward ε = 15 m), which is what keeps the landward chord error inside ~8 m.
+Each zone is a **single simple polygon of 63–270 vertices**: a nearshore band whose **landward edge is a dense run of real OpenStreetMap coastline nodes** (verified to stay within 20 m of the mapped coastline everywhere) and whose **seaward edge comes from a true geodesic line buffer of that run**. Both edges are Douglas–Peucker simplified (landward ε = 8 m, seaward ε = 15 m). Where an inlet is narrower than the opposing banks' buffers, those banks bound the water instead of forcing a full-width strip onto land. These are distance-to-shore approximations, not measured depth contours.
 
 | id | What the band covers | Band | Vertices (landward / seaward) |
 | --- | --- | --- | --- |
-| `pp-bay` | Bancao-Bancao shore → Pristine Beach → port basin → city quay → San Jose waterfront | 400 m | 164 (114 / 50) |
+| `pp-bay` | Bancao-Bancao → Pristine Beach → port basin → San Jose shore → northern apex → opposite bank south to `9.7712302, 118.7161899` | 400 m | 270 (202 / 68) |
 | `sta-lourdes` | Peninsula east coast: Blue Palawan shore → Tagburos mangrove inlet → Sta. Lourdes wharf pier complex → harbour shore | 350 m | 124 (77 / 47) |
 | `honda-inner` | Honda Bay west shore, from N of the wharf pier complex north to 9.894 | 350 m | 67 (45 / 22) |
 | `honda-outer` | Mangrove shore and tidal channel north to just W of the creek mouth | 350 m | 63 (43 / 20) |
 | `binuatan` | Northeast coast: Honda Bay mouth → off Marayugon → around the 9.9812 headland → toward Babuyan | 400 m | 95 (60 / 35) |
 | `sabang` | St. Paul Bay: NW end of the shore → Sabang village and boat terminal → east along the bay | 350 m | 161 (117 / 44) |
+| `irawan` | Iwahig approach → Irawan estuary → original east-wall cap at `9.7719706, 118.7124480` (unchanged) | 400 m | 65 (37 / 28) |
 
 **How they are generated** (and re-generated — do not hand-edit the coordinates):
 
@@ -331,9 +332,11 @@ Each zone is a **single simple polygon of 63–164 vertices**: a nearshore band 
 2. `npx tsx scripts/generate-zones.ts` walks the coastline graph (Dijkstra between per-zone anchors), bridges thin out-and-back spurs (piers, fish pens — only where the bridge chord stays within 15 m of the real coast), builds the buffer, verifies **landward deviation ≤ 15 m, ring simplicity, pairwise non-overlap and band width**, then writes `src/data/zones.ts` and `src/data/coastline.ts`.
 3. `src/data/zones.test.ts` asserts the property that actually matters: **every point of the landward edge within 20 m of the real coastline**, plus simplicity and non-overlap — so the "jagged blade" or "floating offshore strip" regressions fail CI instead of waiting for a human to eyeball screenshots.
 
-Where two strips face the same way they share one end-cap vertex exactly (`honda-inner`/`honda-outer` at `[9.893315, 118.748879]`). Where the coast turns ~90° — at the Sta. Lourdes wharf (E-facing meets N-facing) and at San Jose — each zone takes its own natural cap and a small wedge of open water stays uncovered between them; forcing a shared cap there is what produced self-intersections in earlier revisions.
+Where two strips face the same way they share one end-cap vertex exactly (`honda-inner`/`honda-outer` at `[9.893315, 118.748879]`). At the Sta. Lourdes wharf (E-facing meets N-facing), each zone retains its natural cap instead of forcing a shared one.
 
-Coastline sources: OSM API and Overpass (re-fetched 2026-09-19 by CI); the way ids behind each edge are listed in the header of `zones.ts`. Visual check renders live in `docs/coastline-shots/`.
+**Scoped pp-bay extension (2026-09-20):** pp-bay now rounds the apex on way `1529960721` and follows the opposite bank on `1529960722` only as far as node `368426821` (`9.7712302, 118.7161899`). This covers the previously omitted water at `9.7725, 118.7170`, approximately 88 m from the real shore. The banks' buffers meet inside the narrow inlet, so this is part of pp-bay, not an overlapping eighth zone. Irawan's polygon is unchanged; **the wider bay-mouth gap remains unfilled**. Regression tests check the entire added shoreline, water/land probes on both sides, non-overlap, and offshore exclusions.
+
+Coastline sources: OSM API and Overpass (cache fetched 2026-09-20 by CI); the way ids behind each edge are listed in the header of `zones.ts`. Historical visual check renders live in `docs/coastline-shots/`.
 
 Caveats worth knowing:
 
