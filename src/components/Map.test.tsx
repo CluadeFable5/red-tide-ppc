@@ -112,15 +112,15 @@ describe('zone-path class application (production single-pass render)', () => {
   })
 
   it('keeps the fill ramp attributes in sync with selection', async () => {
-    // Selected first: `fillSelected` for `safe` is 0.46.
+    // Selected first: `fillSelected` for `safe` is 0.58.
     const { container, rerender } = renderMap('pp-bay')
     const path = await waitFor(() => {
       const el = pathFor(container, 'pp-bay')
-      expect(el.getAttribute('fill-opacity')).toBe('0.46')
+      expect(el.getAttribute('fill-opacity')).toBe('0.58')
       return el
     })
-    // Its neighbours sit at the resting `fill` of 0.16.
-    expect(pathFor(container, 'honda-inner').getAttribute('fill-opacity')).toBe('0.16')
+    // Its neighbours sit at the resting `fill` of 0.34.
+    expect(pathFor(container, 'honda-inner').getAttribute('fill-opacity')).toBe('0.34')
 
     // Deselect: the same element drops back to the resting step.
     rerender(
@@ -137,7 +137,7 @@ describe('zone-path class application (production single-pass render)', () => {
     )
 
     await waitFor(() => {
-      expect(path.getAttribute('fill-opacity')).toBe('0.16')
+      expect(path.getAttribute('fill-opacity')).toBe('0.34')
     })
   })
 
