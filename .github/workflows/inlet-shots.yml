@@ -1,0 +1,75 @@
+# Inlet before/after screenshots on REAL tiles.
+#
+# The dev sandbox cannot reach any tile host (egress is blocked), so these
+# captures run here, on a GitHub runner: build the branch (after) and the
+# pre-zone base (before) side by side, screenshot each with
+# scripts/inlet-shots.mjs, and commit the PNGs back to the branch that
+# triggered the run.
+#
+# Only runs when the capture script itself changes, so it stays dormant
+# otherwise. Safe to keep: it never touches src/.
+
+name: inlet shots
+
+on:
+  push:
+    paths:
+      - 'scripts/inlet-shots.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  shots:
+    name: Capture before/after on real tiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out (full history for the before-worktree)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies (after)
+        run: npm ci
+
+      - name: Build after
+        run: npm run build
+
+      - name: Build before worktree at the pre-zone base
+        run: |
+          git worktree add /tmp/inlet-before 1a83eb9
+          cd /tmp/inlet-before
+          PUPPETEER_SKIP_DOWNLOAD=1 npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Serve both builds
+        run: |
+          npx vite preview --port 4175 --strictPort --host 127.0.0.1 &>/tmp/preview-after.log &
+          cd /tmp/inlet-before && npx vite preview --port 4176 --strictPort --host 127.0.0.1 &>/tmp/preview-before.log &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:4175/ >/dev/null && curl -sf http://127.0.0.1:4176/ >/dev/null && break
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:4175/ >/dev/null && curl -sf http://127.0.0.1:4176/ >/dev/null
+
+      - name: Capture after
+        run: BASE_URL=http://127.0.0.1:4175 PREFIX=after REQUIRE_TILES=1 node scripts/inlet-shots.mjs
+
+      - name: Capture before
+        run: BASE_URL=http://127.0.0.1:4176 PREFIX=before REQUIRE_TILES=1 node scripts/inlet-shots.mjs
+
+      - name: Commit screenshots
+        run: |
+          git config user.name "inlet-shots-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/inlet-shots
+          git commit -m "inlet: before/after zone shots on real tiles [skip ci]" || echo NO-CHANGES
+          git push origin "HEAD:${GITHUB_REF_NAME}"

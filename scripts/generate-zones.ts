@@ -45,7 +45,11 @@ interface ZoneRun {
 const ZONE_RUNS: Record<string, ZoneRun> = {
   'pp-bay': {
     from: [9.7229, 118.7684], // Bancao-Bancao lighthouse
-    to: [9.7611, 118.7338], // San Jose waterfront
+    // Headland apex N of San Jose (way 1529960715/1529960721 junction): the
+    // coast reverses here onto the bay's far shore, so this is the natural
+    // northern cap — the run's NNE reach, E-W corner and NNW climb to the
+    // tip all face the same bay water as the city waterfront.
+    to: [9.7877, 118.7194],
     water: [9.705, 118.72],
     width: 400,
   },
@@ -81,6 +85,21 @@ const ZONE_RUNS: Record<string, ZoneRun> = {
     to: [10.2076, 118.9381], // headland east of Sabang village
     water: [10.22, 118.9],
     width: 350,
+  },
+  irawan: {
+    // Starts at way node 8 (past the S-end jog, on straight shore) so the
+    // S cap cuts square across the shore — starting at the way joint
+    // (node 0) skews the cap along-shore with its corner on land.
+    from: [9.7447, 118.6958], // 1529960722 node 8 (Iwahig approach)
+    // The bay mouth's far shore: straight NNE reach up the Irawan valley
+    // side, then the Irawan river-mouth estuary bite. Capped high up the
+    // estuary's east wall (way node 68) — pp-bay's seaward arc rounds
+    // 400 m W of its E-W corner through the estuary-tip water, so the
+    // tip, V, climb and apex wedge stay uncovered (see the San Jose
+    // headland note in zones.ts).
+    to: [9.772, 118.7124],
+    water: [9.775, 118.725], // open bay-mouth water E of the run
+    width: 400,
   },
 }
 

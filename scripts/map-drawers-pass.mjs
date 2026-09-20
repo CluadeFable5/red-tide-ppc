@@ -26,7 +26,8 @@
  *   5. Attribution: the persistent pill is present, visible and ON TOP in
  *      both drawer states (elementFromPoint through the open drawer).
  *   6. No overlap between the pills row, zoom group, tabs, drawer windows
- *      and the attribution pill; zoom buttons and tabs are ≥44px.
+ *      and the attribution pill; zoom buttons and tabs are ≥44px; collapsed
+ *      tabs sit flush with the zoom group's right edge (±0.5px).
  *   7. Initial states: zone drawer collapsed below 768, open at ≥768;
  *      advisory drawer always open.
  *   8. The zoom buttons really drive the map (data-zoom moves).
@@ -159,7 +160,7 @@ async function gotoMap(page) {
   await page.waitForSelector('[data-testid="map-attribution"]', { timeout: 15000 })
   // Wait for seeded zones (demo backend resolves async).
   await page.waitForFunction(
-    () => document.body.textContent?.includes('6 zones · No advisories'),
+    () => document.body.textContent?.includes('7 zones · No advisories'),
     { timeout: 15000 },
   )
   await settle(page)
@@ -456,6 +457,24 @@ try {
     check(`${vp.name} attribution visible + on top (zone collapsed)`,
       attrCollapsed.attributionVisible && attrCollapsed.attributionOnTop, '')
     await page.screenshot({ path: tag('both-collapsed') })
+
+    // ---- 10b. collapsed tab / zoom right-edge alignment -------------------
+    // Both drawers tucked: each tab's right edge must equal the zoom group's
+    // right edge (±0.5px). The tab gap is margin-driven from the clip-window
+    // motion value (0 when collapsed), so unlike a static row `gap` it
+    // cannot hold the collapsed tab off the column edge. ArrowRight is
+    // directional and idempotent — a no-op if a drawer is already tucked.
+    await page.focus('[data-testid="advisory-drawer-tab"]')
+    await page.keyboard.press('ArrowRight')
+    await settle(page, 500)
+    const bothCollapsed = await state(page)
+    const advAlignDelta = Math.abs(bothCollapsed.advisoryTab.right - bothCollapsed.zoom.right)
+    const zoneAlignDelta = Math.abs(bothCollapsed.zoneTab.right - bothCollapsed.zoom.right)
+    check(`${vp.name} collapsed tabs flush with zoom buttons`,
+      bothCollapsed.advisoryState === 'collapsed' &&
+      bothCollapsed.zoneState === 'collapsed' &&
+      advAlignDelta <= 0.5 && zoneAlignDelta <= 0.5,
+      `adv ${bothCollapsed.advisoryState} Δ=${advAlignDelta.toFixed(2)} zone ${bothCollapsed.zoneState} Δ=${zoneAlignDelta.toFixed(2)}`)
 
     // Zoom really drives the map.
     const z0 = parseFloat(attrCollapsed.zoomLevel ?? 'nan')

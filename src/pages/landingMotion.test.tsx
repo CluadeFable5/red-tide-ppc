@@ -104,7 +104,7 @@ describe('landing motion pass — safety content is never gated on animation', (
     // Guards against a refactor silently rewording safety copy while moving it
     // into the animation component.
     const text = container.textContent ?? ''
-    expect(text).toContain('six zones cover the coast, from the city bay to St. Paul Bay.')
+    expect(text).toContain('seven zones cover the coast, from the city bay to St. Paul Bay.')
     expect(text).toContain('water colour, dead shellfish; ten words is enough.')
     expect(text).toContain('if it checks out, the zone goes under advisory.')
   })

@@ -390,7 +390,7 @@ describe('ZoneDrawer on the map page', () => {
 
     // And its content lives in the drawer instead.
     expect(
-      within(live).getByText('6 zones · No advisories'),
+      within(live).getByText('7 zones · No advisories'),
     ).toBeTruthy()
   })
 

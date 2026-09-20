@@ -14,9 +14,9 @@ import { MAP_CENTER, SEED_ZONES, zonesBoundingBox } from './zones'
  */
 
 describe('SEED_ZONES', () => {
-  it('seeds between 4 and 6 zones, all starting safe', () => {
+  it('seeds between 4 and 7 zones, all starting safe', () => {
     expect(SEED_ZONES.length).toBeGreaterThanOrEqual(4)
-    expect(SEED_ZONES.length).toBeLessThanOrEqual(6)
+    expect(SEED_ZONES.length).toBeLessThanOrEqual(7)
     for (const zone of SEED_ZONES) {
       expect(zone.status).toBe('safe')
     }
@@ -100,6 +100,7 @@ describe('SEED_ZONES', () => {
       'honda-outer': [9.9303358, 118.7543035], // Honda Bay mouth, W shore (1530271755)
       binuatan: [9.9400388, 118.8206470], // NE coast S end (62049965)
       sabang: [10.2098884, 118.8676876], // Sabang shore W end (61557844)
+      irawan: [9.7590124, 118.6924772], // straight reach (1529960722 node 24)
     }
     for (const zone of SEED_ZONES) {
       const shore = shoreNodes[zone.id]
@@ -216,6 +217,103 @@ describe('SEED_ZONES', () => {
         `${zone.id} landward edge strays ${worst.d.toFixed(1)} m from the real coastline near ${worst.at} — it must hug the shore (chords cutting across land or a floating offshore gap both fail this)`,
       ).toBeLessThanOrEqual(TOLERANCE_M)
     }
+  })
+
+  it('covers water and excludes land around the pp-bay headland junction', () => {
+    // The E-W section / hook / bight junction north of San Jose is the
+    // trickiest 2 km of pp-bay: the coast doubles back on itself (cove dip,
+    // hook, E-W run, north bight), so a buffer short-circuit here would
+    // silently swallow headland land or drop bay water while every generic
+    // check above (simple ring, 400 m width, 0 m landward deviation) stays
+    // green. These probes pin the land/water truth on both sides of the
+    // junction: water-side probes must be inside the band, land-side probes
+    // outside. Sides were established from the OSM way direction (run heads
+    // N with water on its left / W along the E-W run with water to the S)
+    // and cross-checked against the rendered polygon.
+    const ppBay = SEED_ZONES.find((zone) => zone.id === 'pp-bay')
+    expect(ppBay, 'pp-bay must exist').toBeDefined()
+    const ring = ppBay!.polygon
+    // [label, lat, lng, expectInside]
+    const probes: Array<[string, number, number, boolean]> = [
+      ['E-W south water (E)', 9.774, 118.7315, true],
+      ['E-W south water (W)', 9.773, 118.732, true],
+      ['headland N of hook (E)', 9.774, 118.7285, false],
+      ['headland N of hook (W)', 9.773, 118.729, false],
+      ['north bight water', 9.7765, 118.731, true],
+      ['headland corridor', 9.7765, 118.73, false],
+      ['cove bowl water', 9.768, 118.727, true],
+      ['cove mouth water', 9.771, 118.729, true],
+      ['open bay W of Caña', 9.7634, 118.718, false],
+      ['reach water', 9.766, 118.733, true],
+    ]
+    for (const [label, lat, lng, expected] of probes) {
+      expect(
+        pointStrictlyInside([lat, lng], ring),
+        `${label} (${lat}, ${lng}) must be ${expected ? 'INSIDE' : 'OUTSIDE'} the pp-bay band`,
+      ).toBe(expected)
+    }
+  })
+
+  it('covers water and excludes land around the irawan estuary and the apex wedge', () => {
+    // irawan caps high on the estuary's east wall because pp-bay's seaward
+    // arc rounds through the estuary-tip water: the tip, V, climb and apex
+    // wedge stay uncovered between the two zones (see zones.ts). These
+    // probes pin that seam: estuary/reach water inside the band, valley
+    // land and the wedge outside it, and the offshore features disposed —
+    // the estuary-mouth reef inside, Caña and islet 645683227 outside.
+    // Sides were established from OSM way 1529960722's direction (run heads
+    // NNE with water on its right / E) and cross-checked numerically.
+    const irawan = SEED_ZONES.find((zone) => zone.id === 'irawan')
+    expect(irawan, 'irawan must exist').toBeDefined()
+    const ring = irawan!.polygon
+    expect(
+      ring.length,
+      `irawan polygon has ${ring.length} vertices — expected the generated 65`,
+    ).toBe(65)
+    const ppBay = SEED_ZONES.find((zone) => zone.id === 'pp-bay')!.polygon
+    // [label, lat, lng, expectInsideIrawan]
+    const probes: Array<[string, number, number, boolean]> = [
+      ['reach water E of node 16', 9.7505, 118.6959, true],
+      ['S band water', 9.746, 118.6975, true],
+      ['estuary wall water', 9.7767, 118.7052, true],
+      ['hook pocket water', 9.7783, 118.6997, true],
+      ['estuary-mouth reef (134867069)', 9.7736, 118.6993, true],
+      ['valley land W of node 24', 9.759, 118.6885, false],
+      ['S land', 9.7455, 118.694, false],
+      ['land beyond N cap', 9.7785, 118.712, false],
+      ['apex/climb wedge water', 9.7765, 118.7165, false],
+      ['estuary tip (way node 72)', 9.7712, 118.7162, false],
+      ['islet 645683227 (concave pocket)', 9.7778, 118.7072, false],
+      ['Caña (open bay mouth)', 9.7634, 118.7195, false],
+    ]
+    for (const [label, lat, lng, expected] of probes) {
+      expect(
+        pointStrictlyInside([lat, lng], ring),
+        `${label} (${lat}, ${lng}) must be ${expected ? 'INSIDE' : 'OUTSIDE'} the irawan band`,
+      ).toBe(expected)
+    }
+    // the wedge stays uncovered by BOTH zones (the documented seam)
+    for (const [label, lat, lng] of [
+      ['apex/climb wedge water', 9.7765, 118.7165],
+      ['estuary tip (way node 72)', 9.7712, 118.7162],
+    ]) {
+      expect(
+        pointStrictlyInside([lat as number, lng as number], ppBay),
+        `${label} must also be OUTSIDE the pp-bay band (uncovered wedge)`,
+      ).toBe(false)
+    }
+  })
+
+  it('pins the irawan footprint to the bay-mouth far shore', () => {
+    // Explicit bbox for the 7th zone: the Iwahig approach (S) to the
+    // estuary's east wall (N), valley shore (W) to the bay-mouth water (E).
+    // Fails if a vertex edit ever shifts the zone's footprint.
+    const irawan = SEED_ZONES.find((zone) => zone.id === 'irawan')
+    expect(irawan, 'irawan must exist').toBeDefined()
+    const lats = irawan!.polygon.map(([lat]) => lat)
+    const lngs = irawan!.polygon.map(([, lng]) => lng)
+    expect([Math.min(...lats), Math.max(...lats)]).toEqual([9.744728, 9.778611])
+    expect([Math.min(...lngs), Math.max(...lngs)]).toEqual([118.691778, 118.716092])
   })
 })
 

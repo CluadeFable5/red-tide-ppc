@@ -13,7 +13,12 @@
  *
  * Output: JSON file mapping each region to the coastline ways inside its bbox,
  * each way as an ordered [[lat, lng], ...] geometry, plus a flat merge of the
- * documented OSM ways (fetched from the main OSM API as a cross-check).
+ * documented OSM ways (fetched from the main OSM API as a cross-check, WITH
+ * tags), plus `islets` — tagged place=islet/island and natural=reef/shoal
+ * features inside the bay window, so offshore blobs are confirmed real or
+ * dismissed as rendering artifacts — and `places`, the named place features
+ * (barangays, suburbs, villages...) in the same windows, so hand-traced
+ * reference views can be pinned to exact landmark coordinates.
  *
  *   node scripts/fetch-coastline.mjs [output.json]
  */
@@ -26,7 +31,19 @@ const OUT = resolve(process.argv[2] ?? 'coastline-raw/overpass-coastline.json')
 
 /** One bbox per zone stretch, with ~0.02° margin. [south, west, north, east] */
 const REGIONS = {
-  'pp-bay': [9.7, 118.71, 9.79, 118.79],
+  // pp-bay carries a wider W/N margin than the other stretches: the west
+  // margin completes the bay's far-shore context (way 1529960722 runs to
+  // 118.692) and the north margin confirms the headland apex at 9.7877, N of
+  // which no further city-side coast exists.
+  'pp-bay': [9.7, 118.68, 9.82, 118.79],
+  // apex-north: the inlet / outer coast NW of the San Jose headland apex
+  // (pp-bay's N cap at 9.7877, 118.7194), hand-traced from the reference
+  // screenshot against the Colonel R. Gabuco Road / Sandiwa / PSU /
+  // Tiniguiban label corridor. No coastline N of the apex exists inside the
+  // pp-bay bbox, so the inlet coast must swing W of 118.68 — hence the wide
+  // west margin. South edge overlaps the apex + far-shore embayment for graph
+  // connectivity with the pp-bay run; east edge overlaps the known corridor.
+  'apex-north': [9.76, 118.58, 9.92, 118.76],
   'sta-lourdes': [9.75, 118.72, 9.87, 118.79],
   honda: [9.83, 118.72, 9.95, 118.79],
   binuatan: [9.92, 118.8, 10.0, 118.93],
@@ -46,6 +63,9 @@ const DOCUMENTED_WAYS = [
   1530291482, 62049965, // binuatan Honda Bay north shore + NE coast
   61557844, 62049996, // sabang St. Paul Bay shore + east headland
   1530271757, // mangrove creek complex (context only; never traced)
+  236058175, // islet ~1.5 km off the pp-bay north shore (identity check; outside every band)
+  134867069, // closed coastline ring in open water W of the far shore (blob identity check)
+  645683227, // place=islet without a coastline tag: full geometry places its polygon
 ]
 
 const OVERPASS_ENDPOINTS = [
@@ -134,7 +154,133 @@ function fetchDocumentedWay(id) {
   )
   const way = data.elements.find((el) => el.type === 'way' && el.id === id)
   if (!way) throw new Error(`way ${id} missing from response`)
-  return { id, geometry: way.nodes.map((n) => nodes.get(n)).filter(Boolean) }
+  return {
+    id,
+    geometry: way.nodes.map((n) => nodes.get(n)).filter(Boolean),
+    tags: way.tags ?? {},
+  }
+}
+
+/**
+ * Identity check for charted islets/reefs inside the bay window. The
+ * coastline sweep returns geometry WITHOUT tags, so a dark blob on open
+ * water could be a real islet, a reef flat, or a rendering artifact. This
+ * pulls the tags (place=islet/island, natural=reef/shoal/...) so every
+ * closed coastline ring in the window is confirmed real or dismissed.
+ * Best-effort: the documented-way tags above answer the same question for
+ * the one known ring, so an islet-query failure warns but never fails CI.
+ */
+// [south, west, north, east] each: the bay window plus the apex-north sea
+// window, so islets/reefs AND named landmarks are swept everywhere a
+// hand-traced reference view could reach.
+const SWEEP_WINDOWS = [REGIONS['pp-bay'], REGIONS['apex-north']]
+
+// Fail fast on a misconfigured sweep window: an undefined bbox here used to
+// throw INSIDE the query builders, where the per-query try/catch demoted it
+// to a warning and committed silent empty islets/places arrays over good data.
+for (const [i, w] of SWEEP_WINDOWS.entries()) {
+  if (!Array.isArray(w) || w.length !== 4 || !w.every(Number.isFinite)) {
+    throw new Error(`SWEEP_WINDOWS[${i}] is not a valid bbox — refusing to sweep`)
+  }
+}
+
+function fetchIslets() {
+  const clauses = SWEEP_WINDOWS.map((bb) => {
+    const b = bb.join(',')
+    return (
+      `node["place"~"^(islet|island)$"](${b});` +
+      `way["place"~"^(islet|island)$"](${b});` +
+      `node["natural"~"^(reef|shoal|sand|bare_rock)$"](${b});` +
+      `way["natural"~"^(reef|shoal)$"](${b});`
+    )
+  }).join('')
+  const query = `[out:json][timeout:60];(${clauses});out body center;`
+  const encoded = 'data=' + encodeURIComponent(query)
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const data = curlJson(endpoint, { method: 'POST', data: encoded, timeoutSec: 120 })
+      const found = []
+      for (const el of data.elements ?? []) {
+        if (el.type === 'node') {
+          found.push({ type: 'node', id: el.id, tags: el.tags ?? {}, lat: el.lat, lon: el.lon })
+        } else if (el.type === 'way') {
+          found.push({
+            type: 'way',
+            id: el.id,
+            tags: el.tags ?? {},
+            lat: el.center?.lat ?? null,
+            lon: el.center?.lon ?? null,
+          })
+        }
+      }
+      // Sweep windows overlap: dedupe by type+id.
+      const seen = new Set()
+      const deduped = found.filter((f) => {
+        const k = `${f.type}/${f.id}`
+        if (seen.has(k)) return false
+        seen.add(k)
+        return true
+      })
+      console.log(`islets: ${deduped.length} tagged features in the sweep windows`)
+      return deduped
+    } catch (err) {
+      console.log(`  islet query @ ${endpoint}: ${err.message}`)
+    }
+  }
+  console.log('::warning::islet/reef identity query failed on every endpoint')
+  return []
+}
+
+/**
+ * Grounding for hand-traced reference views: the NAMED place features
+ * (barangays, suburbs, villages, hamlets...) in the sweep windows, plus the
+ * corridor landmarks visible as labels in the inlet reference screenshot —
+ * Colonel R. Gabuco Road, Sandiwa, Palawan State University — so the traced
+ * inlet pins to exact OSM coordinates rather than eyeballed pixels.
+ * Best-effort like the islet query: warns, never fails CI.
+ */
+function fetchPlaces() {
+  const clauses = SWEEP_WINDOWS.map((bb) => {
+    const b = bb.join(',')
+    return (
+      `node["place"]["name"](${b});` +
+      `way["place"]["name"](${b});` +
+      `relation["place"]["name"](${b});` +
+      `way["highway"]["name"~"Gabuco",i](${b});` +
+      `node["amenity"="university"]["name"~"Palawan State",i](${b});` +
+      `way["amenity"="university"]["name"~"Palawan State",i](${b});`
+    )
+  }).join('')
+  const query = `[out:json][timeout:60];(${clauses});out body center;`
+  const encoded = 'data=' + encodeURIComponent(query)
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    try {
+      const data = curlJson(endpoint, { method: 'POST', data: encoded, timeoutSec: 120 })
+      const found = []
+      for (const el of data.elements ?? []) {
+        const pos =
+          el.type === 'node'
+            ? { lat: el.lat, lon: el.lon }
+            : { lat: el.center?.lat ?? null, lon: el.center?.lon ?? null }
+        // `out center` gives ways/relations a centre; skip any it misses.
+        if (pos.lat === null || pos.lat === undefined) continue
+        found.push({ type: el.type, id: el.id, tags: el.tags ?? {}, ...pos })
+      }
+      const seen = new Set()
+      const deduped = found.filter((f) => {
+        const k = `${f.type}/${f.id}`
+        if (seen.has(k)) return false
+        seen.add(k)
+        return true
+      })
+      console.log(`places: ${deduped.length} named features in the sweep windows`)
+      return deduped
+    } catch (err) {
+      console.log(`  places query @ ${endpoint}: ${err.message}`)
+    }
+  }
+  console.log('::warning::named-places query failed on every endpoint')
+  return []
 }
 
 const main = async () => {
@@ -175,13 +321,36 @@ const main = async () => {
     }
   }
 
-  if (!overpassOk && documented.length === 0) {
-    // Surface through a check-run annotation: the sandbox cannot download run
-    // logs, but it CAN read annotations via the check-runs API.
+  let islets = []
+  try {
+    islets = fetchIslets()
+  } catch (err) {
+    console.log(`::warning::islet query threw: ${err.message}`)
+  }
+
+  let places = []
+  try {
+    places = fetchPlaces()
+  } catch (err) {
+    console.log(`::warning::places query threw: ${err.message}`)
+  }
+
+  if (!overpassOk) {
+    // NEVER commit a cache with an empty region sweep: it would clobber the
+    // previous good geometry (generate-zones needs full runs, not just the
+    // documented ways). Fail loudly instead — nothing is written, nothing is
+    // committed — and retry the workflow once Overpass recovers. Errors
+    // surface through a check-run annotation: the sandbox cannot download
+    // run logs, but it CAN read annotations via the check-runs API.
     console.log(
-      `::error::Coastline fetch failed. Errors: ${errors.slice(0, 6).join(' || ').slice(0, 3500)}`,
+      `::error::Overpass sweep failed (no coastline for any region). Errors: ${errors.slice(0, 6).join(' || ').slice(0, 3500)}`,
     )
-    throw new Error('no coastline source succeeded')
+    throw new Error('overpass sweep failed — refusing to clobber the cache')
+  }
+  if (documented.length === 0) {
+    // The sweep is the load-bearing source; the documented ways are the
+    // cross-check. Proceed without them, but say so.
+    console.log('::warning::all documented-way fetches failed; regions still committed')
   }
 
   const summary = Object.fromEntries(
@@ -196,7 +365,14 @@ const main = async () => {
   writeFileSync(
     OUT,
     JSON.stringify(
-      { fetchedAt: new Date().toISOString(), overpassOk, regions: byRegion, documented },
+      {
+        fetchedAt: new Date().toISOString(),
+        overpassOk,
+        regions: byRegion,
+        documented,
+        islets,
+        places,
+      },
       null,
       1,
     ),
