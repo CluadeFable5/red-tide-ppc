@@ -34,7 +34,7 @@ const CACHE = resolve('scripts/coastline-cache/osm-coastline.json')
 const ZONES_TS = resolve('src/data/zones.ts')
 const COASTLINE_TS = resolve('src/data/coastline.ts')
 
-/** [south-west anchor, north-east anchor, a point in the water, band width m] */
+/** Shoreline start/end anchors, a point in the water, and band width in metres. */
 interface ZoneRun {
   from: [number, number]
   to: [number, number]
@@ -45,11 +45,14 @@ interface ZoneRun {
 const ZONE_RUNS: Record<string, ZoneRun> = {
   'pp-bay': {
     from: [9.7229, 118.7684], // Bancao-Bancao lighthouse
-    // Headland apex N of San Jose (way 1529960715/1529960721 junction): the
-    // coast reverses here onto the bay's far shore, so this is the natural
-    // northern cap — the run's NNE reach, E-W corner and NNW climb to the
-    // tip all face the same bay water as the city waterfront.
-    to: [9.7877, 118.7194],
+    // Round the northern apex (1529960715/1529960721 junction), then follow
+    // 1529960721 and 1529960722 back down the opposite bank to OSM node
+    // 368426821. This adds only the verified shoreline stretch: water at
+    // [9.7725, 118.717] was ~88 m from the shore but outside the old band.
+    // The two banks' buffers meet in the narrow inlet, so keep one pp-bay
+    // polygon rather than an overlapping new zone. Do not continue west
+    // toward irawan or bridge the wider bay-mouth gap.
+    to: [9.7712302, 118.7161899],
     water: [9.705, 118.72],
     width: 400,
   },
@@ -91,12 +94,9 @@ const ZONE_RUNS: Record<string, ZoneRun> = {
     // S cap cuts square across the shore — starting at the way joint
     // (node 0) skews the cap along-shore with its corner on land.
     from: [9.7447, 118.6958], // 1529960722 node 8 (Iwahig approach)
-    // The bay mouth's far shore: straight NNE reach up the Irawan valley
-    // side, then the Irawan river-mouth estuary bite. Capped high up the
-    // estuary's east wall (way node 68) — pp-bay's seaward arc rounds
-    // 400 m W of its E-W corner through the estuary-tip water, so the
-    // tip, V, climb and apex wedge stay uncovered (see the San Jose
-    // headland note in zones.ts).
+    // Keep the original Irawan run and cap (way 1529960722 node 68).
+    // pp-bay now follows the separate return bank east of this endpoint;
+    // the polygons remain disjoint, without a forced cross-bay seam.
     to: [9.772, 118.7124],
     water: [9.775, 118.725], // open bay-mouth water E of the run
     width: 400,
@@ -108,8 +108,9 @@ const ZONE_RUNS: Record<string, ZoneRun> = {
  * polygons tile exactly. Only used where both strips face the same way; at
  * the Sta. Lourdes wharf the coast turns ~90° (E-facing strip meets
  * N-facing strip), so those two take their natural caps instead and a small
- * wedge of open water stays uncovered at the headland — same as the
- * pp-bay / sta-lourdes seam at San Jose.
+ * wedge of open water stays uncovered at the wharf. pp-bay instead follows
+ * both banks around its northern apex as one polygon; it never shares a
+ * cap with irawan across the wider bay.
  */
 const SHARED_CAPS: Array<[string, string]> = [['honda-inner', 'honda-outer']]
 
