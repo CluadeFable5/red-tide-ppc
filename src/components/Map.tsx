@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Map as LeafletMap, Polygon as LeafletPolygon } from 'leaflet'
-import { MapContainer, Polygon, Popup, TileLayer, useMap } from 'react-leaflet'
+import { MapContainer, Pane, Polygon, Popup, TileLayer, useMap } from 'react-leaflet'
 import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MAX_BOUNDS, zonesBoundingBox } from '../data/zones'
-import { zonePaint } from '../styles/statusTheme'
+import { ZONE_CASING, zonePaint } from '../styles/statusTheme'
 // `LatLng` here is our own [lat, lng] tuple, which Leaflet accepts directly.
 import type { LatLng, Zone } from '../types'
 import { ShippingLayer } from './ShippingLayer'
@@ -33,6 +33,15 @@ export interface MapProps {
   onSelectZone: (zoneId: string) => void
   onReport: (zoneId: string) => void
 }
+
+/**
+ * Pane for the zone boundary casings. Leaflet's default `overlayPane` sits at
+ * z-index 400; this one is created just below it so every casing stroke is
+ * painted under every zone fill and status stroke, never over a neighbour's.
+ * (Custom panes get their own SVG root, so `.leaflet-overlay-pane path` still
+ * selects exactly the interactive zone polygons — the tests rely on that.)
+ */
+const ZONE_CASING_PANE = 'zoneCasingPane'
 
 /** Publishes the Leaflet instance to the page chrome once the map mounts. */
 function MapReadyBridge({
@@ -245,51 +254,74 @@ function ZonePolygon({
   }, [isSelected])
 
   const paint = zonePaint(zone.status)
+  const weight = isSelected ? paint.weightSelected : paint.weight
 
   return (
-    <Polygon
-      ref={layerRef}
-      positions={zone.polygon}
-      // Constructor prop — applied by Leaflet when the path is created.
-      className="zone-path"
-      pathOptions={{
-        color: paint.hex,
-        fillColor: paint.hex,
-        weight: isSelected ? paint.weightSelected : paint.weight,
-        // Per-status outline strength (see `strokeOpacity` in statusTheme.ts):
-        // `safe` recedes, everything else holds the default 0.95.
-        opacity: paint.strokeOpacity ?? 0.95,
-        // The ramp itself. Leaflet writes these as attributes and the
-        // transition on `.zone-path` does the interpolating — see
-        // `zonePaint` in styles/statusTheme.ts for why it is a sequence.
-        fillOpacity: isSelected
-          ? paint.fillSelected
-          : isHovered
-            ? paint.fillHover
-            : paint.fill,
-        dashArray: paint.dashArray,
-      }}
-      eventHandlers={{
-        click: () => onSelectZone(zone.id),
-        mouseover: () => onHover(zone.id),
-        mouseout: () => onLeave(zone.id),
-      }}
-    >
-      <Popup
-        // The class lands on Leaflet's `.leaflet-popup` container and is
-        // what lets index.css tint the card, tip and glow per status.
-        className={`zone-popup zone-popup--${zone.status}`}
-        maxWidth={340}
-        minWidth={260}
-        autoPanPadding={[16, 16]}
+    <>
+      {/* Boundary casing — see `ZONE_CASING` in styles/statusTheme.ts. A
+          non-interactive copy of the ring in the pane *under* the zone
+          polygons, stroked in the ground colour and slightly wider than the
+          status stroke, so every outline is flanked by a dark halo. Two
+          touching same-status zones share one teal seam, but each now has its
+          own dark edge on its side of it, so the seam reads as a boundary
+          instead of dissolving into one continuous fill. */}
+      <Polygon
+        positions={zone.polygon}
+        pane={ZONE_CASING_PANE}
+        className="zone-casing"
+        interactive={false}
+        pathOptions={{
+          color: ZONE_CASING.hex,
+          weight: weight + ZONE_CASING.extraWeight,
+          opacity: ZONE_CASING.opacity,
+          fill: false,
+          lineJoin: 'round',
+        }}
+      />
+      <Polygon
+        ref={layerRef}
+        positions={zone.polygon}
+        // Constructor prop — applied by Leaflet when the path is created.
+        className="zone-path"
+        pathOptions={{
+          color: paint.hex,
+          fillColor: paint.hex,
+          weight,
+          // Per-status outline strength (see `strokeOpacity` in statusTheme.ts):
+          // `safe` recedes, everything else holds the default 0.95.
+          opacity: paint.strokeOpacity ?? 0.95,
+          // The ramp itself. Leaflet writes these as attributes and the
+          // transition on `.zone-path` does the interpolating — see
+          // `zonePaint` in styles/statusTheme.ts for why it is a sequence.
+          fillOpacity: isSelected
+            ? paint.fillSelected
+            : isHovered
+              ? paint.fillHover
+              : paint.fill,
+          dashArray: paint.dashArray,
+        }}
+        eventHandlers={{
+          click: () => onSelectZone(zone.id),
+          mouseover: () => onHover(zone.id),
+          mouseout: () => onLeave(zone.id),
+        }}
       >
-        <ZonePopup
-          zone={zone}
-          pendingCount={pendingCount}
-          onReport={() => onReport(zone.id)}
-        />
-      </Popup>
-    </Polygon>
+        <Popup
+          // The class lands on Leaflet's `.leaflet-popup` container and is
+          // what lets index.css tint the card, tip and glow per status.
+          className={`zone-popup zone-popup--${zone.status}`}
+          maxWidth={340}
+          minWidth={260}
+          autoPanPadding={[16, 16]}
+        >
+          <ZonePopup
+            zone={zone}
+            pendingCount={pendingCount}
+            onReport={() => onReport(zone.id)}
+          />
+        </Popup>
+      </Polygon>
+    </>
   )
 }
 
@@ -374,6 +406,9 @@ export function Map({
       {/* Navigation-hazard lines sit UNDER the advisory polygons: secondary
           reference, never competing with the status colours. */}
       {shippingLanesVisible && <ShippingLayer />}
+
+      {/* Zone boundary casings live one step below the overlay pane (400). */}
+      <Pane name={ZONE_CASING_PANE} style={{ zIndex: 399 }} />
 
       {zones.map((zone) => (
         <ZonePolygon
