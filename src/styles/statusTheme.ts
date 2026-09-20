@@ -157,8 +157,10 @@ export function zoneTheme(status: ZoneStatus): StatusTheme {
  * There is no glow filter on the polygons; what read as a halo around `safe`
  * outlines was the neon #3ddc84 stroke at 0.95 on a near-black ground — bright
  * saturated green simply looks like it emits light there. `safe` now paints
- * its outline at 0.55 so its border reads as a quiet boundary, while
+ * its outline at 0.7 so its border reads as a quiet boundary, while
  * `advisory`/`unconfirmed` keep 0.95 and stay the loudest lines on the map.
+ * Every outline also sits on a dark casing (`ZONE_CASING`, below) so touching
+ * zones keep a visible seam even when they share a status.
  * `weight` is left identical across statuses on purpose: the selected-zone
  * emphasis and the dash for `unconfirmed` are the shape signals, and the press
  * ramp in index.css assumes every status shares the same lift.
@@ -191,7 +193,14 @@ const ZONE_PAINT: Record<ZoneStatus, ZonePaint> = {
     fillSelected: 0.46,
     weight: 2,
     weightSelected: 4,
-    strokeOpacity: 0.55,
+    // 0.55 was tuned when no two `safe` zones touched. It is enough for a
+    // stroke against open water, but where two safe strips meet (pp-bay and
+    // irawan share a ~300m seam at the bay mouth) a 0.55 stroke of the same
+    // hex as the two fills either side of it has almost no edge contrast and
+    // the pair fuses into one shape. 0.7 keeps `safe` the quietest line on
+    // the map (advisory/unconfirmed are 0.95) while the casing below does
+    // the real work of separating neighbours.
+    strokeOpacity: 0.7,
   },
   unconfirmed: {
     hex: '#f0a500',
@@ -204,6 +213,39 @@ const ZONE_PAINT: Record<ZoneStatus, ZonePaint> = {
   },
   advisory: { hex: '#ff5252', fill: 0.3, fillHover: 0.44, fillSelected: 0.56, weight: 2, weightSelected: 4 },
 }
+
+/**
+ * Dark casing drawn under every zone outline.
+ *
+ * WHY
+ * ---
+ * Adjacent zones can share a boundary — `pp-bay` and `irawan` meet along a
+ * ~300m seam at the bay mouth, and the Honda Bay strips touch too. When both
+ * are the same status the seam is a single stroke of the *same hex as both
+ * fills*, and at `safe`'s low stroke opacity it all but vanishes: the two
+ * zones read as one blob of water. Status colour is not the answer (both are,
+ * correctly, safe), and nudging fill opacity per zone would break the meaning
+ * of the prominence ladder above.
+ *
+ * Instead each ring is drawn twice: once here, in the ground colour, slightly
+ * wider than the status stroke and in a pane *below* every zone; then the
+ * status stroke on top. The result is the standard cartographic "casing": a
+ * thin dark edge either side of every outline, so where two outlines meet
+ * there are two dark edges with the status line between them and the boundary
+ * survives regardless of what colours sit on either side. It also gives every
+ * outline a little more separation from the inverted basemap, which is a
+ * mild improvement everywhere, not just at seams.
+ *
+ * `extraWeight` is total (split half to each side), so at rest a 2px status
+ * stroke gets ~1.25px of dark edge each side. Kept small: this is an edge,
+ * not a border.
+ */
+export const ZONE_CASING = {
+  /** The map ground (`.leaflet-container` background / `--color-ink`). */
+  hex: '#0b0b0b',
+  extraWeight: 2.5,
+  opacity: 0.85,
+} as const
 
 export function zonePaint(status: ZoneStatus): ZonePaint {
   return ZONE_PAINT[status] ?? ZONE_PAINT.safe

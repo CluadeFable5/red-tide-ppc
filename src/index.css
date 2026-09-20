@@ -337,6 +337,15 @@ body {
     stroke-opacity 200ms var(--ease-out-quint);
 }
 
+/* Zone boundary casing (Map.tsx, `zoneCasingPane`). Purely decorative: it
+   must never catch the pointer ahead of the real polygon above it. Leaflet
+   already skips `leaflet-interactive` for it; this is belt-and-braces for the
+   pointerdown delegate in Map.tsx, which only lights `.zone-path` anyway. */
+.zone-casing {
+  pointer-events: none;
+  transition: stroke-width 200ms var(--ease-out-quint);
+}
+
 /* Press lift.
    ---------------------------------------------------------------------
    The class is toggled by <ZonePressFeedback/> from the native `pointerdown`,
