@@ -145,11 +145,24 @@ export function zoneTheme(status: ZoneStatus): StatusTheme {
  * by hand, which risks the zone-click → popup → report-form flow for a
  * sub-200ms effect. Not worth it.
  *
- * `fillOpacity` at rest stays low (0.16–0.30): the dark basemap is what makes
- * the coastlines legible, and a heavy fill hides the thing people came to look
- * at. The at-rest levels are also a prominence ladder, not just "low-ish":
- * `safe` sits furthest back (0.16), `unconfirmed` in the middle (0.26),
- * `advisory` furthest forward (0.30). The same ladder runs through
+ * `fillOpacity` at rest (0.34–0.42) is high enough that a zone reads as a
+ * filled water area, not a traced outline. The zones are ~350–400 m coastal
+ * strips; at the default fit zoom (~z10–11) a strip is only ~5–10 px wide, and
+ * measured against the dark basemap the old levels (0.16–0.30) produced a fill
+ * signal of ~7–18 RGB units for `safe` — weaker than the basemap's own labels
+ * and land tint (~45–60), so the strips read as thin outlined lines. The
+ * raised levels keep the underlying map legible (place names stay readable
+ * through every status) while making the fill the dominant read — see
+ * `docs/zone-fill-shots/` for the before/after evidence.
+ *
+ * The at-rest levels remain a prominence ladder, not three equal voices:
+ * `safe` sits furthest back (0.34), `unconfirmed` in the middle (0.38),
+ * `advisory` furthest forward (0.42). The steps are smaller than they used to
+ * be because the ladder is carried perceptually: `safe`'s sage-teal sits only
+ * ~112 RGB units from the dark water, while amber and red sit ~245 away, so
+ * equal steps of opacity would leave `safe` invisible next to its neighbours.
+ * `safe` quiet, `unconfirmed`/`advisory` loud is the hierarchy; hue does most
+ * of that work, opacity keeps it honest. The same ladder runs through
  * `strokeOpacity` — see below.
  *
  * STROKE OPACITY IS PART OF THE LADDER
@@ -188,9 +201,9 @@ export interface ZonePaint {
 const ZONE_PAINT: Record<ZoneStatus, ZonePaint> = {
   safe: {
     hex: '#4a8a75',
-    fill: 0.16,
-    fillHover: 0.3,
-    fillSelected: 0.46,
+    fill: 0.34,
+    fillHover: 0.46,
+    fillSelected: 0.58,
     weight: 2,
     weightSelected: 4,
     // 0.55 was tuned when no two `safe` zones touched. It is enough for a
@@ -205,13 +218,13 @@ const ZONE_PAINT: Record<ZoneStatus, ZonePaint> = {
   unconfirmed: {
     hex: '#f0a500',
     dashArray: '6 5',
-    fill: 0.26,
-    fillHover: 0.4,
-    fillSelected: 0.5,
+    fill: 0.38,
+    fillHover: 0.50,
+    fillSelected: 0.60,
     weight: 2,
     weightSelected: 4,
   },
-  advisory: { hex: '#ff5252', fill: 0.3, fillHover: 0.44, fillSelected: 0.56, weight: 2, weightSelected: 4 },
+  advisory: { hex: '#ff5252', fill: 0.42, fillHover: 0.54, fillSelected: 0.64, weight: 2, weightSelected: 4 },
 }
 
 /**

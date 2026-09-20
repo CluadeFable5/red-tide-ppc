@@ -358,10 +358,10 @@ body {
    The value is the top of the hover ramp, so a press is the brightest
    non-selected step for every status and the cue reads the same whatever colour
    the polygon is. `:not(.zone-path--selected)` keeps it off the current
-   selection, which sits higher (0.46–0.56) and must never be dimmed — least of
+   selection, which sits higher (0.58–0.64) and must never be dimmed — least of
    all for an advisory. */
 .leaflet-overlay-pane path.zone-path--pressed:not(.zone-path--selected) {
-  fill-opacity: 0.44;
+  fill-opacity: 0.54;
 }
 
 /* Zoom control, restyled to match the sheets. */

@@ -147,19 +147,19 @@ describe('six-item pass on /map (jsdom side)', () => {
     expect(paths).toHaveLength(7)
     for (const path of paths) {
       expect(path.classList.contains('zone-path')).toBe(true)
-      // All seed zones are `safe`: resting fill is 0.16.
-      expect(path.getAttribute('fill-opacity')).toBe('0.16')
+      // All seed zones are `safe`: resting fill is 0.34.
+      expect(path.getAttribute('fill-opacity')).toBe('0.34')
     }
 
     useAppStore.getState().selectZone('pp-bay')
     await waitFor(() => {
       const selected = paths.find((p) => p.classList.contains('zone-path--selected'))
       expect(selected).toBeTruthy()
-      expect(selected!.getAttribute('fill-opacity')).toBe('0.46')
+      expect(selected!.getAttribute('fill-opacity')).toBe('0.58')
     })
     for (const other of paths) {
       if (other !== paths.find((p) => p.classList.contains('zone-path--selected'))) {
-        expect(other.getAttribute('fill-opacity')).toBe('0.16')
+        expect(other.getAttribute('fill-opacity')).toBe('0.34')
       }
     }
   })
