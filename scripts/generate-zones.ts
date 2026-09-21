@@ -564,6 +564,8 @@ interface ZoneResult {
   seaward: [number, number][]
   width: number
   wayIds: number[]
+  /** Coast-hugging (hook) seaward vertices exempt from the min-width check. */
+  hook: number
 }
 
 const round6 = (p: [number, number]): [number, number] => [
@@ -598,7 +600,73 @@ function main() {
     paths[id] = despiked
     const dense = densify(despiked, 20)
     const landward = simplifyDP(dense, 8).map(round6)
-    const seaward = simplifyDP(seawardFromBuffer(landward, cfg.width, cfg.water), 15).map(round6)
+    let seaward = simplifyDP(seawardFromBuffer(landward, cfg.width, cfg.water), 15).map(round6)
+    let hookCount = 0
+    if (id === 'irawan') {
+      // The 400 m buffer's flat cap at the run-end node cuts straight across
+      // the hook headland, painting ~0.11 km² of dry land as water and leaving
+      // a jagged 11–60 m land sliver against pp-bay's true shore. Re-route the
+      // NE boundary along the REAL hook coastline, then resume the buffer arc
+      // at the first vertex back over open water, so irawan meets pp-bay at a
+      // single shared cap vertex and the seam reads as one coastline. The hook
+      // nodes are also appended to the reference run so the landward tolerance
+      // test in zones.test.ts sees them as coast-side, not ambiguous.
+      //
+      // NOTE on node resolution: the committed coastline cache persists only
+      // ordered [[lat,lng]] geometry per way (fetch-coastline.mjs does not
+      // store OSM node IDs), so we cannot look nodes up by ID here. Instead we
+      // resolve the two anchors by their documented coordinates and WALK the
+      // way's node order between them — no hardcoded array positions. If the
+      // way or either anchor is missing, or the walk is empty, fail loudly.
+      const HOOK_WAY_ID = 1529960722
+      const hookWay = ways.find((w) => w.id === HOOK_WAY_ID)
+      if (!hookWay) throw new Error(`irawan seam: way ${HOOK_WAY_ID} missing from cache`)
+      // OSM node 368426821 — pp-bay's terminal anchor; the hook's end vertex.
+      const END_NODE = { id: 368426821, at: ZONE_RUNS['pp-bay'].to }
+      const wayIdx = (at: [number, number], label: string): number => {
+        let bi = -1
+        let bd = Infinity
+        hookWay.geometry.forEach((p, i) => {
+          const d = metersBetween(p, at)
+          if (d < bd) { bd = d; bi = i }
+        })
+        if (bi < 0 || bd > 5)
+          throw new Error(`irawan seam: ${label} not on way ${HOOK_WAY_ID} (nearest ${bd.toFixed(1)} m)`)
+        return bi
+      }
+      // The run's true terminal node (snapped by Dijkstra), not the rough
+      // `cfg.to` anchor, so the coordinate match is exact.
+      const runEndCoord = paths[id][paths[id].length - 1]
+      const runEndIdx = wayIdx(runEndCoord, 'run-end node (way idx 68)')
+      const endIdx = wayIdx(END_NODE.at, `node ${END_NODE.id}`)
+      if (endIdx <= runEndIdx)
+        throw new Error(`irawan seam: hook walk empty (runEnd ${runEndIdx} >= end ${endIdx})`)
+      // intermediate hook nodes between the run end and the end node
+      const hook: [number, number][] = hookWay.geometry
+        .slice(runEndIdx + 1, endIdx)
+        .map(round6)
+      // pin the last vertex to pp-bay's exact terminal anchor (shared cap)
+      hook.push(END_NODE.at)
+      const hookRun: [number, number][] = [hookWay.geometry[runEndIdx], ...hook]
+      const dHook = (p: [number, number]) => distToPolyline(p, hookRun)
+      const k1 = seaward.findIndex((p) => dHook(p) < 60)
+      const start = k1 < 0 ? 0 : k1 + 1
+      let k2 = -1
+      for (let i = start; i < seaward.length; i++) {
+        if (dHook(seaward[i]) > 150) { k2 = i; break }
+      }
+      if (k2 < 0) k2 = seaward.length
+      seaward = [
+        ...hook,
+        ...(k1 < k2 ? [seaward[k1]] : []),
+        ...seaward.slice(k2),
+      ]
+      hookCount = hook.length
+      paths[id] = [...paths[id], ...hook]
+      console.log(
+        `  irawan: hook nodes way[${runEndIdx + 1}..${endIdx}] (${hook.length} vtx, node ${END_NODE.id} shared), tight resume seaward[${k1}], offshore resume seaward[${k2}]`,
+      )
+    }
 
     // provenance: which documented ways contributed nodes
     const nodeSet = new Set(despiked.map((p) => g.key(p)))
@@ -606,7 +674,7 @@ function main() {
       .filter((w) => w.geometry.some((p) => nodeSet.has(g.key(p))))
       .map((w) => w.id)
       .sort((a, b) => a - b)
-    results.push({ id, landward, seaward, width: cfg.width, wayIds })
+    results.push({ id, landward, seaward, width: cfg.width, wayIds, hook: hookCount })
     console.log(
       `${id}: landward ${landward.length} vtx, seaward ${seaward.length} vtx, run ${sp.hint}, ways ${wayIds.join(',')}`,
     )
@@ -689,8 +757,12 @@ function main() {
       }
       fail(`${r.id} polygon is not simple (self-intersects)${located}`)
     }
-    // strip width sampled along the seaward edge
-    const widths: number[] = r.seaward.map((p) => distToPolyline(p, r.landward))
+    // strip width sampled along the seaward edge. The first `r.hook` vertices
+    // (irawan's hook-coast re-route) hug the real shoreline by design, so the
+    // 0.8–1.15× width band does not apply to them — skip them here.
+    const widths: number[] = r.seaward
+      .slice(r.hook)
+      .map((p) => distToPolyline(p, r.landward))
     const wMean = widths.reduce((s, d) => s + d, 0) / widths.length
     const wMinI = widths.indexOf(Math.min(...widths))
     const wMin = widths[wMinI]

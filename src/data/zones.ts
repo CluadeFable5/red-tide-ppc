@@ -987,14 +987,18 @@ export const SEED_ZONES: SeedZone[] = [
     description:
       'The far shore of the bay mouth west of the city — the Irawan river-mouth estuary and the straight shore south toward Iwahig, facing the city waterfront across open water.',
     /**
-     * 65 vertices (37 landward / 28 seaward), 400 m coastal band. Landward
+     * 64 vertices (37 landward / 27 seaward), 400 m coastal band. Landward
      * edge traces the real OSM coastline (way 1529960722) NNE from the
      * Iwahig approach up the Irawan valley side, through the river-mouth
      * estuary bite to high on its east wall (within 20 m of it everywhere).
      * Seaward edge is the smooth parallel buffer contour 400 m out in the
-     * bay mouth. Its original cap at way index 68 is unchanged. pp-bay now
-     * covers the separate return bank from way index 72 around the northern
-     * apex, without overlapping this band or filling the wider bay gap.
+     * bay mouth, except at the NE hook: the buffer's flat cap at way index 68
+     * cut straight across the hook headland and painted ~0.11 km² of dry land
+     * as water, so the boundary instead follows the real coastline along way
+     * indices 69–72 to OSM node 368426821 — pp-bay's terminal anchor — and the
+     * two zones tile at that single shared cap vertex. pp-bay covers the
+     * separate return bank from way index 72 around the northern apex, without
+     * overlapping this band or filling the wider bay gap.
      * The estuary-mouth coastline ring (way 134867069) sits inside the band;
      * Caña and islet 645683227 stay outside it.
      */
@@ -1036,12 +1040,11 @@ export const SEED_ZONES: SeedZone[] = [
       [9.774532, 118.70859],
       [9.773239, 118.710739],
       [9.771971, 118.712448],
-      [9.774845, 118.714644],
-      [9.773798, 118.715592],
-      [9.773158, 118.715894],
-      [9.771769, 118.716092],
+      [9.771314, 118.713316],
+      [9.770931, 118.714405],
+      [9.771015, 118.715631],
+      [9.7712302, 118.7161899],
       [9.771072, 118.715982],
-      [9.769807, 118.715364],
       [9.769288, 118.71488],
       [9.768575, 118.713653],
       [9.768379, 118.712243],
