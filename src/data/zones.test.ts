@@ -354,8 +354,8 @@ describe('SEED_ZONES', () => {
     const ring = irawan!.polygon
     expect(
       ring.length,
-      `irawan polygon has ${ring.length} vertices — expected the generated 65`,
-    ).toBe(65)
+      `irawan polygon has ${ring.length} vertices — expected the generated 64`,
+    ).toBe(64)
     // [label, lat, lng, expectInsideIrawan]
     const probes: Array<[string, number, number, boolean]> = [
       ['reach water E of node 16', 9.7505, 118.6959, true],
@@ -370,6 +370,11 @@ describe('SEED_ZONES', () => {
       ['pp-bay return-bank water', 9.7725, 118.717, false],
       ['islet 645683227 (concave pocket)', 9.7778, 118.7072, false],
       ['Caña (open bay mouth)', 9.7634, 118.7195, false],
+      // The hook headland (way 1529960722 idx 68→72) is dry land. Before the
+      // seam fix the 400 m buffer's flat cap painted ~0.11 km² of it as water;
+      // the re-routed NE boundary must leave it OUTSIDE the band.
+      ['hook headland land (mid)', 9.7736, 118.714, false],
+      ['hook headland land (old cap corner)', 9.7748, 118.7146, false],
     ]
     for (const [label, lat, lng, expected] of probes) {
       expect(
@@ -388,7 +393,10 @@ describe('SEED_ZONES', () => {
     const lats = irawan!.polygon.map(([lat]) => lat)
     const lngs = irawan!.polygon.map(([, lng]) => lng)
     expect([Math.min(...lats), Math.max(...lats)]).toEqual([9.744728, 9.778611])
-    expect([Math.min(...lngs), Math.max(...lngs)]).toEqual([118.691778, 118.716092])
+    // Max lng is the shared cap vertex at way node 72 ([9.7712302, 118.7161899]),
+    // pinned to pp-bay's exact terminal anchor so the NE boundary follows the
+    // hook coast and the two rings tile at a single point.
+    expect([Math.min(...lngs), Math.max(...lngs)]).toEqual([118.691778, 118.7161899])
   })
 })
 
