@@ -127,3 +127,40 @@
   animation-play-state: paused;
 }
 
+/* Phase 2: the chrome loops live OUTSIDE the Leaflet container (the legend
+   pips' pulse ring, the advisory drawer's tide trace, the scanline), so the
+   gate mirrors its class onto <body> (see MapLoopGate in Map.tsx). */
+body.map-motion-paused .animate-status-pulse,
+body.map-motion-paused .animate-tide-drift,
+body.map-motion-paused .animate-tide-scan {
+  animation-play-state: paused;
+}
+
+
+
+/* --- Reduced motion ------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  /* Same raised specificity as the rule it disables. */
+  .leaflet-overlay-pane path.zone-path.zone-path--loading {
+    animation: none;
+  }
+
+  .leaflet-overlay-pane path.zone-path--advisory {
+    /* The pulse and the march stop; the dashed outline stays as a static
+       shape signal at full stroke opacity. */
+    animation: none;
+  }
+
+  /* Status crossfades, selection dim and tile fades become instant state
+     changes. */
+  .leaflet-overlay-pane path.zone-path {
+    transition: none;
+  }
+
+  .leaflet-map-pane .leaflet-tile {
+    opacity: 1;
+    transition: none;
+  }
+}
+
+/* ===========================================================================

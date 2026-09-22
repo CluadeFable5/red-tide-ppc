@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion, useReducedMotion, useTransform } from 'motion/react'
+import { APP_SPRING } from '../motion/mapMotion'
+import { MorphChevronIcon } from './MorphChevron'
 import { formatRelative } from '../lib/format'
 import { ZONE_STATUS_ORDER } from '../lib/status'
 import {
@@ -124,23 +126,25 @@ export function ZoneDrawer({
   // never-transformed layer.
   const tabGap = useTransform(windowWidth, [0, 8], [0, 6], { clamp: true })
 
-  // Staggered entrance once — replays the sheet's one-time list reveal the
-  // first time the drawer opens.
-  const [revealToken, setRevealToken] = useState(0)
-  const hasRevealed = useRef(false)
+  // Staggered entrance: the cards ride the drawer's own open/collapsed state,
+  // driven by the same spring physics as the drag. The list renders `hidden`
+  // for its first commit and flips to `show` on the next — a mount-time
+  // `animate="show"` is exactly the case real Chrome mounts straight past,
+  // while a state-driven hidden→show transition always plays (proven at
+  // <768, where the first open drives the same flip).
+  const [revealed, setRevealed] = useState(false)
   useEffect(() => {
-    if (open && !hasRevealed.current) {
-      hasRevealed.current = true
-      setRevealToken((token) => token + 1)
-    }
-  }, [open])
+    setRevealed(true)
+  }, [])
 
   const listVariants = useMemo(
     () => ({
       hidden: {},
       show: {
         transition: {
-          staggerChildren: reduceMotion ? 0 : 0.045,
+          // 40ms per card — the Phase-2 spec. The reveal rides the same
+          // controller as the drag spring; only the stagger is tuned here.
+          staggerChildren: reduceMotion ? 0 : 0.04,
           delayChildren: reduceMotion ? 0 : 0.04,
         },
       },
@@ -154,9 +158,9 @@ export function ZoneDrawer({
       show: {
         opacity: 1,
         y: 0,
-        transition: reduceMotion
-          ? { duration: 0 }
-          : { duration: 0.32, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] },
+        // The app spring (420/34/0.85) — the same physics the drag snaps
+        // with, so the reveal reads as part of the drawer, not an overlay.
+        transition: reduceMotion ? { duration: 0 } : APP_SPRING,
       },
     }),
     [reduceMotion],
@@ -219,7 +223,7 @@ export function ZoneDrawer({
         title={action}
         data-testid="zone-drawer-tab"
         style={{ marginRight: tabGap }}
-        className="pointer-events-auto flex w-11 shrink-0 select-none flex-col items-center gap-2 self-start rounded-lg border border-line bg-ink-2/88 py-3 backdrop-blur-md transition-colors [touch-action:none] hover:border-accent/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="pointer-events-auto flex w-11 shrink-0 select-none flex-col items-center gap-2 self-start rounded-lg border border-line bg-ink-2/88 py-3 backdrop-blur-md transition-colors [touch-action:none] hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <StatusPip
           size="sm"
@@ -227,23 +231,9 @@ export function ZoneDrawer({
           pulses={dominantTheme.pulses}
           trigger={dominant}
         />
-        <motion.svg
-          viewBox="0 0 24 24"
-          className="h-3.5 w-3.5 text-paper/70"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          aria-hidden="true"
-          // ◀ when collapsed (opens leftward), ▶ when open (tucks rightward).
-          animate={{ rotate: open ? 180 : 0 }}
-          transition={
-            reduceMotion
-              ? { duration: 0 }
-              : { type: 'spring', stiffness: 420, damping: 34 }
-          }
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
-        </motion.svg>
+        {/* Geometry morph, not a rotation: the arms fold through a vertical
+            stroke between ‹ and › (see MorphChevron). */}
+        <MorphChevronIcon open={open} className="h-3.5 w-3.5 text-paper/70" />
         <span
           aria-hidden="true"
           className="block h-8 w-1 rounded-full bg-line-soft"
@@ -392,22 +382,7 @@ export function ZoneDrawer({
                     title={action}
                     className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line text-paper/70 transition-colors hover:border-accent/40 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                   >
-                    <motion.svg
-                      viewBox="0 0 24 24"
-                      className="h-3.5 w-3.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.2"
-                      aria-hidden="true"
-                      animate={{ rotate: open ? 180 : 0 }}
-                      transition={
-                        reduceMotion
-                          ? { duration: 0 }
-                          : { type: 'spring', stiffness: 420, damping: 34 }
-                      }
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
-                    </motion.svg>
+                    <MorphChevronIcon open={open} className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
@@ -446,10 +421,9 @@ export function ZoneDrawer({
 
               {zonesReady && (
                 <motion.ul
-                  key={revealToken}
                   variants={listVariants}
                   initial="hidden"
-                  animate="show"
+                  animate={open && revealed ? 'show' : 'hidden'}
                   className="mt-2.5 grid gap-2"
                 >
                   {zones.map((zone) => {

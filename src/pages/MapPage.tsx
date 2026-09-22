@@ -19,6 +19,8 @@ import {
   DRAWER_RESERVE_COLLAPSED,
   DRAWER_RESERVE_OPEN,
 } from '../motion/mapMotion'
+import { resolveActiveStatus } from '../motion/statusKey'
+import '../styles/micro-interactions.css'
 
 import { selectPendingCountByZone, selectZoneById, useAppStore } from '../store'
 import type { Zone, ZoneStatus } from '../types'
@@ -169,6 +171,13 @@ export function MapPage() {
     return counts
   }, [zones])
 
+  // The fixed pills row lights the selected zone's status; with no selection
+  // it rests on the worst status that actually has zones (see statusKey.ts).
+  const activeStatus = resolveActiveStatus(
+    selectZoneById(zones, selectedZoneId)?.status ?? null,
+    statusCounts,
+  )
+
   const reportZone = selectZoneById(zones, reportZoneId)
 
   const [heldZone, setHeldZone] = useState<Zone | null>(null)
@@ -304,7 +313,7 @@ export function MapPage() {
 
       {/* Two kinds of chrome, two contracts: the pills row is fixed and never
           moves; the drawers tuck into the right edge behind their tabs. */}
-      <StatusKey counts={statusCounts} />
+      <StatusKey counts={statusCounts} activeStatus={activeStatus} />
 
       <MapControlColumn map={leafletMap}>
         <AdvisoryDrawer
