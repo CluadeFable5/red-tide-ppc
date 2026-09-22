@@ -210,6 +210,7 @@ export function MapPage() {
           focusZoneId={selectedZoneId}
           focusToken={focusToken}
           shippingLanesVisible={shippingLanesVisible}
+          reports={reports}
         focusReserveRight={focusReserveRight}
           onMapReady={setLeafletMap}
           onSelectZone={selectZone}

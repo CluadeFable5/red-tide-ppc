@@ -36,7 +36,7 @@ function renderMap({
   return render(
     <Map
       zones={zones}
-      pendingCounts={{}}
+      reports={[]} pendingCounts={{}}
       selectedZoneId={selectedZoneId}
       resetToken={0}
       focusZoneId={null}
@@ -111,7 +111,7 @@ describe('advisory modifier', () => {
     rerender(
       <Map
         zones={flipped}
-        pendingCounts={{}}
+        reports={[]} pendingCounts={{}}
         selectedZoneId={null}
         resetToken={0}
         focusZoneId={null}
@@ -159,7 +159,7 @@ describe('selection dimming', () => {
     rerender(
       <Map
         zones={zones}
-        pendingCounts={{}}
+        reports={[]} pendingCounts={{}}
         selectedZoneId={null}
         resetToken={0}
         focusZoneId={null}

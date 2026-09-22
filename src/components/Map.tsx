@@ -9,14 +9,17 @@ import {
   zoneLoadDelayMs,
 } from '../motion/mapMotion'
 import { ZONE_CASING, zonePaint } from '../styles/statusTheme'
+import { IntroGlide, ReportPins, UserLocationDot } from './MapMarkers'
 import '../styles/map-motion.css'
 // `LatLng` here is our own [lat, lng] tuple, which Leaflet accepts directly.
-import type { LatLng, Zone } from '../types'
+import type { LatLng, Report, Zone } from '../types'
 import { ShippingLayer } from './ShippingLayer'
 import { ZonePopup } from './ZonePopup'
 
 export interface MapProps {
   zones: Zone[]
+  /** Live report feed — pins land on zone centroids (see MapMarkers.tsx). */
+  reports: Report[]
   /** zoneId → number of pending reports, for the popup hint. */
   pendingCounts: Record<string, number>
   selectedZoneId: string | null
@@ -508,6 +511,7 @@ function ZonePolygon({
  */
 export function Map({
   zones,
+  reports,
   pendingCounts,
   selectedZoneId,
   resetToken,
@@ -559,9 +563,14 @@ export function Map({
 
       <MapReadyBridge onMapReady={onMapReady} />
       <FitToBounds box={box} resetToken={resetToken} />
+      {/* After FitToBounds: on a session's first load the glide overrides the
+          initial fit with the wide-to-bay establishing shot (MapMarkers). */}
+      <IntroGlide />
       <FocusZone zone={focusZone} token={focusToken} reserveRightPx={focusReserveRight} />
       <ZonePressFeedback />
       <MapLoopGate />
+      <ReportPins reports={reports} zones={zones} />
+      <UserLocationDot />
 
       {/* Navigation-hazard lines sit UNDER the advisory polygons: secondary
           reference, never competing with the status colours. */}

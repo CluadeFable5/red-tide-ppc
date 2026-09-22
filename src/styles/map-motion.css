@@ -164,3 +164,161 @@ body.map-motion-paused .animate-tide-scan {
 }
 
 /* ===========================================================================
+   Phase 3 — report pins, user location, ambient orbs
+   =========================================================================== */
+
+/* --- Report pins ----------------------------------------------------------
+   The pin is a 16px divIcon; only the inner body/ring animate, and only via
+   transform + opacity. Fresh pins (reports that arrive AFTER mount) drop in
+   with one small overshoot and fire ONE expanding ring; pre-existing pins
+   render plain. */
+.report-pin-wrap {
+  background: none;
+  border: none;
+}
+
+.report-pin {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.report-pin-body {
+  position: absolute;
+  inset: 2px;
+  border-radius: 9999px;
+  background: currentColor;
+  border: 2px solid rgba(10, 12, 10, 0.85);
+  box-sizing: border-box;
+}
+
+.report-pin--fresh .report-pin-body {
+  animation: pin-drop 0.55s var(--ease-out-quint) both;
+}
+
+@keyframes pin-drop {
+  0%   { transform: translateY(-16px); opacity: 0; }
+  55%  { transform: translateY(2px);   opacity: 1; }
+  75%  { transform: translateY(-3px); }
+  100% { transform: translateY(0); }
+}
+
+.report-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  opacity: 0;
+  transform: scale(0.4);
+  animation: pin-ring 0.8s var(--ease-out-quint) 0.12s 1 both;
+}
+
+@keyframes pin-ring {
+  0%   { opacity: 0.7; transform: scale(0.4); }
+  100% { opacity: 0;   transform: scale(2.6); }
+}
+
+/* --- User location dot ------------------------------------------------------
+   Rendered only when navigator.geolocation yields a position. The halo is a
+   loop, so the map-movement gate pauses it (see the body rule below). */
+.loc-wrap {
+  background: none;
+  border: none;
+}
+
+.loc-dot {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #4da3ff;
+  border: 2px solid rgba(8, 10, 12, 0.9);
+  box-sizing: border-box;
+}
+
+.loc-halo {
+  position: absolute;
+  inset: -9px;
+  border-radius: 9999px;
+  background: rgba(77, 163, 255, 0.35);
+  animation: loc-halo 2.4s var(--ease-out-quint) infinite;
+}
+
+@keyframes loc-halo {
+  0%   { transform: scale(0.45); opacity: 0.7; }
+  70%  { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+/* --- Ambient orbs -----------------------------------------------------------
+   Soft radial gradients drifting on transform only (orbs.jakubantalik.com,
+   adapted). They live behind the header brand row and the drawer panel —
+   never over the map canvas, never near the pills. */
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.orb--header-a {
+  width: 220px;
+  height: 220px;
+  left: -60px;
+  top: -140px;
+  background: radial-gradient(closest-side, rgba(74, 138, 117, 0.28), transparent 72%);
+  animation: orb-drift-a 44s ease-in-out infinite alternate;
+}
+
+.orb--header-b {
+  width: 180px;
+  height: 180px;
+  right: 8%;
+  top: -120px;
+  background: radial-gradient(closest-side, rgba(240, 165, 0, 0.16), transparent 72%);
+  animation: orb-drift-b 52s ease-in-out infinite alternate;
+}
+
+.orb--panel {
+  width: 300px;
+  height: 300px;
+  right: -120px;
+  top: -120px;
+  background: radial-gradient(closest-side, rgba(255, 82, 82, 0.10), transparent 72%);
+  animation: orb-drift-a 60s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes orb-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(28px, 14px, 0) scale(1.12); }
+}
+
+@keyframes orb-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.08); }
+  to   { transform: translate3d(-24px, 10px, 0) scale(0.96); }
+}
+
+/* --- Reduced motion: everything above becomes a static state ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  .report-pin--fresh .report-pin-body,
+  .report-ring,
+  .loc-halo,
+  .orb {
+    animation: none;
+  }
+  .report-ring {
+    opacity: 0;
+  }
+  .loc-halo {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+}
+
+/* --- Loop gate: the new loops pause with the camera, like the old ones ------ */
+body.map-motion-paused .loc-halo,
+body.map-motion-paused .orb {
+  animation-play-state: paused;
+}

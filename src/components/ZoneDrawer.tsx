@@ -275,9 +275,12 @@ export function ZoneDrawer({
               translated track, for the same mobile-GPU reason as the gauge
               card. Width reserves 5rem for tab + gap + margins (see doc). */}
           <div
-            className="pointer-events-auto relative flex h-full w-[min(100vw_-_5rem,23.75rem)] flex-col overflow-hidden rounded-l-xl border-l border-line bg-ink-2 shadow-[-24px_0_48px_-24px_rgba(0,0,0,0.9)]"
+            className="pointer-events-auto relative isolate flex h-full w-[min(100vw_-_5rem,23.75rem)] flex-col overflow-hidden rounded-l-xl border-l border-line bg-ink-2 shadow-[-24px_0_48px_-24px_rgba(0,0,0,0.9)]"
             data-testid="zone-drawer-panel"
           >
+            {/* Phase-3 ambient orb behind the panel content (isolate keeps
+                the negative-z span above the panel fill, below the list). */}
+            <span aria-hidden="true" className="orb orb--panel -z-10" />
             {/* Registration ticks, mirrored from the sheet's top edge to the
                 panel's leading (left) edge. Static paint, never blurred. */}
             <span
