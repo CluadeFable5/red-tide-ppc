@@ -15,6 +15,11 @@ import { ReportForm } from '../components/ReportForm'
 import { ZONE_PANEL_FALLBACK_WIDTH, ZoneDrawer } from '../components/ZoneDrawer'
 import { useSidePanel } from '../motion/useSidePanel'
 import type { SidePanelState } from '../motion/sidePanelAnchors'
+import {
+  DRAWER_RESERVE_COLLAPSED,
+  DRAWER_RESERVE_OPEN,
+} from '../motion/mapMotion'
+
 import { selectPendingCountByZone, selectZoneById, useAppStore } from '../store'
 import type { Zone, ZoneStatus } from '../types'
 
@@ -135,6 +140,15 @@ export function MapPage() {
     fallbackWidth: ZONE_PANEL_FALLBACK_WIDTH,
   })
 
+  // The right-edge reservation the focus flight keeps clear: the open drawer
+  // panel on desktop. On phones the drawer tucks itself the moment a zone is
+  // focused (see `focusZone` below), and below the breakpoint the flight
+  // ignores this value anyway — so it is only ever the desktop constants.
+  const focusReserveRight =
+    zonePanel.state === 'open'
+      ? DRAWER_RESERVE_OPEN
+      : DRAWER_RESERVE_COLLAPSED
+
   const pendingCounts = useMemo(
     () => selectPendingCountByZone(reports),
     [reports],
@@ -187,6 +201,7 @@ export function MapPage() {
           focusZoneId={selectedZoneId}
           focusToken={focusToken}
           shippingLanesVisible={shippingLanesVisible}
+        focusReserveRight={focusReserveRight}
           onMapReady={setLeafletMap}
           onSelectZone={selectZone}
           onReport={openReportForm}
@@ -214,7 +229,7 @@ export function MapPage() {
                 aria-pressed={shippingLanesVisible}
                 aria-label="Shipping channel overlay — show or hide the port traffic lanes"
                 title="Shipping channel overlay (PCG TSS) — where boats meet ship traffic"
-                className={`grid h-8 min-w-8 place-items-center rounded-md border px-1.5 backdrop-blur-md transition-colors active:scale-95 ${
+                className={`grid h-8 min-w-8 place-items-center rounded-md border px-1.5 backdrop-blur-md transition-colors ${
                   shippingLanesVisible
                     ? 'border-[#2e7cd6] bg-[#2e7cd6]/15 text-[#9cc4f7]'
                     : 'border-line bg-ink-2/85 text-paper/75 hover:border-accent/40 hover:text-accent'
@@ -263,7 +278,7 @@ export function MapPage() {
               onClick={() => setResetToken((token) => token + 1)}
               aria-label="Reset view"
               title="Reset view"
-              className="grid h-8 w-8 place-items-center rounded-md border border-line bg-ink-2/85 text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent active:scale-95"
+              className="grid h-8 w-8 place-items-center rounded-md border border-line bg-ink-2/85 text-paper/75 backdrop-blur-md transition-colors hover:border-accent/40 hover:text-accent"
             >
               <svg
                 viewBox="0 0 24 24"
