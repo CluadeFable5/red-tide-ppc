@@ -105,7 +105,7 @@ export function ZonePopup({
         type="button"
         onClick={onReport}
         style={{ ['--i' as string]: pendingCount > 0 ? 5 : 4 }}
-        className="zone-popup-line mt-3 w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-semibold text-ink transition-transform duration-150 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent active:scale-[0.98]"
+        className="zone-popup-line mt-3 w-full rounded-lg bg-accent px-3 py-2.5 text-sm font-semibold text-ink transition-transform duration-150 hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         Report something here
       </button>

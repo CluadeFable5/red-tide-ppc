@@ -1,0 +1,33 @@
+/* ===========================================================================
+   Micro-interactions — Phase 2: one press scale, one easing, everywhere.
+
+   designspells.com's restraint rule: a press is a ~3% scale dip on the ONE
+   eased curve the rest of the app uses — never a bounce, never a layout
+   shift. `scale` is its own CSS property (compositor-friendly, like
+   transform), so this never touches layout, and it composes safely with any
+   transform a component already owns.
+
+   The transition list deliberately mirrors `transition-colors` (colour,
+   background, border) plus `scale`, because a `transition:` shorthand would
+   otherwise clobber the colour ramps these controls already carry.
+   =========================================================================== */
+
+:where(button, a):not(:disabled) {
+  transition:
+    scale var(--dur-fast) var(--ease-out-quint),
+    color var(--dur-fast) var(--ease-out-quint),
+    background-color var(--dur-fast) var(--ease-out-quint),
+    border-color var(--dur-fast) var(--ease-out-quint);
+}
+
+:where(button, a):not(:disabled):active {
+  scale: 0.97;
+}
+
+/* The press is a state change, not an animation — reduced motion keeps it
+   but makes it instant. */
+@media (prefers-reduced-motion: reduce) {
+  :where(button, a):not(:disabled) {
+    transition-duration: 0.01ms;
+  }
+}

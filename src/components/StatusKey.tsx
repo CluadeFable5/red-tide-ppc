@@ -1,9 +1,12 @@
 import { useRef } from 'react'
-import { motion, motionValue, useTransform } from 'motion/react'
+import { motion, motionValue, useReducedMotion, useTransform } from 'motion/react'
 import type { MotionValue } from 'motion/react'
 import { ZONE_STATUS_ORDER } from '../lib/status'
+import { APP_SPRING } from '../motion/mapMotion'
+import { resolveActiveStatus } from '../motion/statusKey'
 import { zoneLabel, zoneTheme } from '../styles/statusTheme'
 import type { ZoneStatus } from '../types'
+import { CountUp } from './CountUp'
 import { StatusPip } from './StatusPip'
 
 /**
@@ -40,9 +43,14 @@ export interface StatusKeyProps {
   counts: Record<ZoneStatus, number>
   /** Optional fade driver; defaults to always visible. */
   chromeOpacity?: MotionValue<number>
+  /**
+   * Status the shared indicator rests on. Defaults to the worst status with
+   * a count — MapPage passes the selected zone's status to override it.
+   */
+  activeStatus?: ZoneStatus | null
 }
 
-export function StatusKey({ counts, chromeOpacity }: StatusKeyProps) {
+export function StatusKey({ counts, chromeOpacity, activeStatus }: StatusKeyProps) {
   // Constant visibility when no fade driver is supplied — created once.
   const fallbackOpacity = useRef<MotionValue<number> | null>(null)
   if (fallbackOpacity.current === null) {
@@ -55,6 +63,8 @@ export function StatusKey({ counts, chromeOpacity }: StatusKeyProps) {
   const chipsPointerEvents = useTransform(opacity, (value): string =>
     value < 0.1 ? 'none' : 'auto',
   )
+
+  const active = activeStatus ?? resolveActiveStatus(null, counts)
 
   return (
     <motion.div
@@ -69,7 +79,12 @@ export function StatusKey({ counts, chromeOpacity }: StatusKeyProps) {
         className="flex select-none flex-wrap items-center gap-1.5"
       >
         {ZONE_STATUS_ORDER.map((status) => (
-          <StatusChip key={status} status={status} count={counts[status] ?? 0} />
+          <StatusChip
+            key={status}
+            status={status}
+            count={counts[status] ?? 0}
+            active={status === active}
+          />
         ))}
       </motion.div>
     </motion.div>
@@ -77,15 +92,47 @@ export function StatusKey({ counts, chromeOpacity }: StatusKeyProps) {
 }
 
 /**
- * One status count pill. The same chip as the original floating legend —
- * unchanged, so the visual language is identical.
+ * One status count pill. The same chip as the original floating legend, plus
+ * two live details:
+ *
+ *  - the SHARED INDICATOR: exactly one chip hosts a `layoutId` layer; when the
+ *    active status changes (selection or counts), motion moves that single
+ *    element from the old chip's bounds to the new one — the highlight slides
+ *    between pills while the pills themselves never move;
+ *  - the count ticks through `<CountUp/>` instead of cutting to the new
+ *    number.
+ *
+ * The indicator is a static-tinted layer (no looping animation, no shadow
+ * animation — a transform-only layout move), so the row stays as cheap as
+ * before.
  */
-function StatusChip({ status, count }: { status: ZoneStatus; count: number }) {
+function StatusChip({
+  status,
+  count,
+  active,
+}: {
+  status: ZoneStatus
+  count: number
+  active: boolean
+}) {
   const theme = zoneTheme(status)
   const label = zoneLabel(status)
+  const reduceMotion = useReducedMotion()
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-ink-2/88 py-1 pl-2 pr-2 backdrop-blur-md">
+    <span
+      data-status={status}
+      className="relative inline-flex items-center gap-1.5 rounded-full border border-line bg-ink-2/88 py-1 pl-2 pr-2 backdrop-blur-md"
+    >
+      {active && (
+        <motion.span
+          layoutId="status-key-active-indicator"
+          data-testid="status-key-indicator"
+          className="absolute inset-0 -z-10 rounded-full"
+          style={{ backgroundColor: theme.hex, opacity: 0.16 }}
+          transition={reduceMotion ? { duration: 0 } : APP_SPRING}
+        />
+      )}
       {/* The pip pops whenever the count changes — a legend that only re-colours
           is a legend nobody notices going from 0 to 1. */}
       <StatusPip
@@ -98,11 +145,8 @@ function StatusChip({ status, count }: { status: ZoneStatus; count: number }) {
       <span className="font-display text-[11px] leading-none tracking-[0.03em] text-paper/85">
         {label}
       </span>
-      <span
-        className="font-mono text-[10px] leading-none tabular-nums"
-        style={{ color: theme.hex }}
-      >
-        {count}
+      <span className="font-mono text-[10px] leading-none" style={{ color: theme.hex }}>
+        <CountUp to={count} duration={0.9} />
       </span>
     </span>
   )
