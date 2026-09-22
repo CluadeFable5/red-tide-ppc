@@ -205,6 +205,12 @@ export function useSidePanel(
       setDragging(false)
       const released = offsetX.get()
       dragTravelled.current = Math.abs(released - dragOrigin.current)
+      // A bare tap (no travel, no fling) is owned by the tab's click handler
+      // (toggle). Settling here as well races that toggle: pointerup's settle
+      // can land AFTER the click's state flip and yank the panel back to the
+      // anchor it started from — caught by the real-browser pass as a tab
+      // tap that "sometimes" doesn't collapse.
+      if (dragTravelled.current <= DRAG_SLOP && Math.abs(velocity.x) < 0.1) return
       settle(
         resolveSidePanelAnchor({ offset: released, velocity: velocity.x, offsets }),
       )

@@ -77,7 +77,20 @@ export function Header({
         {/* Scrim: keeps the brand legible over bright map tiles without
             drawing a hard panel across the top of the photo. */}
         <div className="bg-gradient-to-b from-ink via-ink/85 to-transparent pb-8">
-          <div className="flex items-center gap-3 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          {/* Phase-3 ambient orbs (orbs.jakubantalik.com, adapted): soft
+              gradient drift behind the brand row ONLY — the layer is clipped
+              to the header strip so it can never reach the pills row or the
+              map body. Transform/opacity animation only; static under
+              reduced motion; paused while the camera moves. */}
+          <div
+            aria-hidden="true"
+            data-testid="header-orbs"
+            className="absolute inset-x-0 top-0 h-14 overflow-hidden"
+          >
+            <span className="orb orb--header-a" />
+            <span className="orb orb--header-b" />
+          </div>
+          <div className="relative flex items-center gap-3 px-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
             <Link
               to="/"
               className="pointer-events-auto flex min-w-0 items-center gap-2.5"

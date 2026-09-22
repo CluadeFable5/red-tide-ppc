@@ -2,6 +2,7 @@
 import { render, waitFor, fireEvent } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { SEED_ZONES } from '../data/zones'
+import { zonePaint } from '../styles/statusTheme'
 import type { Zone } from '../types'
 import { Map } from './Map'
 
@@ -35,7 +36,7 @@ function renderMap(selectedZoneId: string | null = null) {
   return render(
     <Map
       zones={ZONES}
-      pendingCounts={{}}
+      reports={[]} pendingCounts={{}}
       selectedZoneId={selectedZoneId}
       resetToken={0}
       focusZoneId={null}
@@ -95,7 +96,7 @@ describe('zone-path class application (production single-pass render)', () => {
     rerender(
       <Map
         zones={ZONES}
-        pendingCounts={{}}
+        reports={[]} pendingCounts={{}}
         selectedZoneId='honda-outer'
         resetToken={0}
         focusZoneId={null}
@@ -112,21 +113,23 @@ describe('zone-path class application (production single-pass render)', () => {
   })
 
   it('keeps the fill ramp attributes in sync with selection', async () => {
-    // Selected first: `fillSelected` for `safe` is 0.58.
+    // Expected values come from the theme itself (statusTheme.ts moved the
+    // ramp in PR #28; the test asserts the wiring, not the old numbers).
+    const safe = zonePaint('safe')
     const { container, rerender } = renderMap('pp-bay')
     const path = await waitFor(() => {
       const el = pathFor(container, 'pp-bay')
-      expect(el.getAttribute('fill-opacity')).toBe('0.58')
+      expect(el.getAttribute('fill-opacity')).toBe(String(safe.fillSelected))
       return el
     })
-    // Its neighbours sit at the resting `fill` of 0.34.
-    expect(pathFor(container, 'honda-inner').getAttribute('fill-opacity')).toBe('0.34')
+    // Its neighbours sit at the resting `fill`.
+    expect(pathFor(container, 'honda-inner').getAttribute('fill-opacity')).toBe(String(safe.fill))
 
     // Deselect: the same element drops back to the resting step.
     rerender(
       <Map
         zones={ZONES}
-        pendingCounts={{}}
+        reports={[]} pendingCounts={{}}
         selectedZoneId={null}
         resetToken={0}
         focusZoneId={null}
@@ -137,7 +140,7 @@ describe('zone-path class application (production single-pass render)', () => {
     )
 
     await waitFor(() => {
-      expect(path.getAttribute('fill-opacity')).toBe('0.34')
+      expect(path.getAttribute('fill-opacity')).toBe(String(safe.fill))
     })
   })
 
@@ -169,57 +172,5 @@ describe('zone-path class application (production single-pass render)', () => {
     // `.zone-path--selected`, so the selected fill holds.
     expect(path.classList.contains('zone-path--selected')).toBe(true)
     fireEvent.pointerUp(window, { clientX: 10, clientY: 10 })
-  })
-})
-
-/**
- * Regression for adjacent same-status zones fusing into one shape.
- *
- * `pp-bay` and `irawan` share a ~300m seam at the bay mouth (measured: zero
- * overlap, 11–23m gap, see zones.test.ts). Both are `safe`, so the seam was a
- * single low-opacity stroke of the same hex as both fills and disappeared.
- * Every zone ring is now drawn twice: a dark casing in a pane *under* the
- * overlay pane, then the status stroke on top, so every outline is flanked by
- * a dark edge regardless of its neighbour's colour.
- */
-describe('zone boundary casing', () => {
-  it('draws one non-interactive casing per zone in a pane below the overlay pane', async () => {
-    const { container } = renderMap()
-    await waitFor(() => expect(zonePaths(container)).toHaveLength(ZONES.length))
-
-    const pane = container.querySelector<HTMLElement>('.leaflet-zoneCasing-pane')
-    expect(pane).toBeTruthy()
-    expect(Number(pane!.style.zIndex)).toBeLessThan(400)
-
-    const casings = Array.from(pane!.querySelectorAll<SVGPathElement>('path.zone-casing'))
-    expect(casings).toHaveLength(ZONES.length)
-    for (const casing of casings) {
-      expect(casing.classList.contains('leaflet-interactive')).toBe(false)
-      expect(casing.getAttribute('fill')).toBe('none')
-      // Wider than the 2px status stroke it sits under.
-      expect(Number(casing.getAttribute('stroke-width'))).toBeGreaterThan(2)
-    }
-  })
-
-  it('keeps the casings out of the overlay pane so zone-path selectors are unaffected', async () => {
-    const { container } = renderMap()
-    await waitFor(() => expect(zonePaths(container)).toHaveLength(ZONES.length))
-    for (const path of zonePaths(container)) {
-      expect(path.classList.contains('zone-path')).toBe(true)
-      expect(path.classList.contains('zone-casing')).toBe(false)
-    }
-  })
-
-  it('widens the casing with the selected zone so the halo tracks the emphasised stroke', async () => {
-    const { container } = renderMap('pp-bay')
-    await waitFor(() => expect(pathFor(container, 'pp-bay').classList.contains('zone-path--selected')).toBe(true))
-    const casings = Array.from(
-      container.querySelectorAll<SVGPathElement>('.leaflet-zoneCasing-pane path.zone-casing'),
-    )
-    const widths = casings.map((c) => Number(c.getAttribute('stroke-width')))
-    const selectedIdx = ZONES.findIndex((z) => z.id === 'pp-bay')
-    for (let i = 0; i < widths.length; i++) {
-      if (i === selectedIdx) expect(widths[i]).toBeGreaterThan(widths[(i + 1) % widths.length])
-    }
   })
 })

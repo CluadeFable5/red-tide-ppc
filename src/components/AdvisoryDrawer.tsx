@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
-import { motion, useReducedMotion, useTransform } from 'motion/react'
+import { motion, useTransform } from 'motion/react'
+import { MorphChevronIcon } from './MorphChevron'
 import {
   advisoryShare,
   formatPercent,
@@ -115,7 +116,6 @@ const TAB_LABEL: Record<'open' | 'collapsed', string> = {
 
 export function AdvisoryDrawer({ advisory, zones, pending }: AdvisoryDrawerProps) {
   const panel = useSidePanel('open', { edge: 'right' })
-  const reduceMotion = useReducedMotion()
   const open = panel.state === 'open'
   const tabLabel = TAB_LABEL[panel.state]
 
@@ -183,25 +183,11 @@ export function AdvisoryDrawer({ advisory, zones, pending }: AdvisoryDrawerProps
         title={tabLabel}
         data-testid="advisory-drawer-tab"
         style={{ marginRight: tabGap }}
-        className="pointer-events-auto flex w-11 shrink-0 select-none flex-col items-center justify-center gap-2 self-start rounded-lg border border-line bg-ink-2/88 py-3 backdrop-blur-md transition-colors [touch-action:none] hover:border-accent/40 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="pointer-events-auto flex w-11 shrink-0 select-none flex-col items-center justify-center gap-2 self-start rounded-lg border border-line bg-ink-2/88 py-3 backdrop-blur-md transition-colors [touch-action:none] hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
-        <motion.svg
-          viewBox="0 0 24 24"
-          className="h-3.5 w-3.5 text-paper/70"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          aria-hidden="true"
-          // ◀ when collapsed (opens leftward), ▶ when open (tucks rightward).
-          animate={{ rotate: open ? 180 : 0 }}
-          transition={
-            reduceMotion
-              ? { duration: 0 }
-              : { type: 'spring', stiffness: 420, damping: 34 }
-          }
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
-        </motion.svg>
+        {/* Geometry morph, not a rotation: the arms fold through a vertical
+            stroke between ‹ and › (see MorphChevron). */}
+        <MorphChevronIcon open={open} className="h-3.5 w-3.5 text-paper/70" />
         <span
           aria-hidden="true"
           className="block h-8 w-1 rounded-full bg-line-soft"

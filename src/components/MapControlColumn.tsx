@@ -85,7 +85,7 @@ export function ZoomControls({ map }: { map: LeafletMap | null }) {
   }, [map])
 
   const buttonClass =
-    'grid h-11 w-11 place-items-center text-paper/75 transition-colors hover:text-accent active:scale-95 disabled:cursor-default disabled:opacity-35 disabled:hover:text-paper/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent'
+    'grid h-11 w-11 place-items-center text-paper/75 transition-colors hover:text-accent disabled:cursor-default disabled:opacity-35 disabled:hover:text-paper/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent'
 
   return (
     <div

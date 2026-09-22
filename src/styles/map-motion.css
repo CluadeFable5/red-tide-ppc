@@ -1,0 +1,324 @@
+/* ===========================================================================
+   Map motion — Phase 1: zones and camera.
+
+   Everything here animates cheap, compositor-friendly properties only:
+   opacity, and SVG paint attributes (fill-opacity, stroke-opacity,
+   stroke-dashoffset, stroke-width). No filter, no box-shadow, no
+   backdrop-filter — and nothing in here ever sits on a moving layer.
+
+   Looping animations (the advisory pulse, the dash march) are paused while
+   the camera moves: `<MapLoopGate/>` in Map.tsx toggles `.map-motion-paused`
+   on the Leaflet container from `movestart`/`zoomstart` → `moveend`/
+   `zoomend`. Pausing via `animation-play-state` keeps each loop's phase —
+   resuming never restarts the pulse with a visible jump.
+
+   Reduced motion: the load-in and the loops collapse to instant state
+   changes (explicit `animation: none` — the global reduce rule in index.css
+   zeroes durations, but that would keep a pending load-in hidden for its
+   full stagger delay; `none` shows every zone immediately).
+   =========================================================================== */
+
+/* --- 1. Zone load-in ------------------------------------------------------
+   Each polygon fades its FILL from 0 to whatever target Leaflet wrote on the
+   path's `fill-opacity` attribute. A keyframe with only `from` animates to
+   the element's own computed value — one keyframe serves every status's
+   target. `both` holds opacity 0 through the stagger delay; the class is
+   removed on `animationend` (Map.tsx) so the animation can never pin a stale
+   value over a later status change. The delay comes from a per-path custom
+   property set imperatively when the layer is added. */
+@keyframes zone-load-in {
+  from {
+    fill-opacity: 0;
+  }
+}
+
+/* Doubled `.zone-path` raises specificity above the advisory rule below:
+   an advisory zone is born with BOTH modifiers, and while the load-in runs
+   it must own the `animation` shorthand — otherwise the pulse replaces the
+   fade, and the fade's `animationend` cleanup never fires (the loading
+   class would stick). When the fade ends the class is removed and the
+   pulse/dash take over. */
+.leaflet-overlay-pane path.zone-path.zone-path--loading {
+  animation: zone-load-in 500ms var(--ease-out-quint) both;
+  animation-delay: var(--zone-delay, 0ms);
+  /* The load-in must not ride the fill-opacity transition too. */
+  transition: none;
+}
+
+/* --- 2. Advisory zones: stroke pulse + marching dash ----------------------
+   Strokes only — animating fill on these large polygons repaints too much on
+   mobile. The pulse swings stroke-opacity 0.6 → 1 on a slow loop; the dash
+   marches one double-period (10 + 7 = 17 user units × 2) so the loop is
+   seamless. Advisory polygons keep their red fill untouched.
+
+   The dashes are also a non-colour signal (the same policy as
+   `unconfirmed`'s dashArray in statusTheme.ts): pattern here is 10 7,
+   deliberately distinct from unconfirmed's 6 5. */
+@keyframes zone-advisory-pulse {
+  0%,
+  100% {
+    stroke-opacity: 0.6;
+  }
+  50% {
+    stroke-opacity: 1;
+  }
+}
+
+@keyframes zone-advisory-dash {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    /* Two full dash periods (17 × 2) — seamless wrap. */
+    stroke-dashoffset: -34;
+  }
+}
+
+.leaflet-overlay-pane path.zone-path--advisory {
+  stroke-dasharray: 10 7;
+  animation:
+    zone-advisory-pulse 3.5s ease-in-out infinite,
+    zone-advisory-dash 7s linear infinite;
+}
+
+/* --- 3. Status change crossfade -------------------------------------------
+   `fill` and `stroke` join the existing ramp: when a zone's status flips,
+   Leaflet rewrites the presentation attributes and these transitions
+   interpolate the colours over 400ms instead of cutting. This list
+   intentionally RESTATES the index.css transitions — it loads after them and
+   adds opacity (for the selection dim) plus the two colour channels. */
+.leaflet-overlay-pane path.zone-path {
+  transition:
+    fill-opacity 200ms var(--ease-out-quint),
+    stroke-width 200ms var(--ease-out-quint),
+    stroke-opacity 200ms var(--ease-out-quint),
+    opacity 200ms var(--ease-out-quint),
+    fill 400ms var(--ease-out-quint),
+    stroke 400ms var(--ease-out-quint);
+}
+
+/* --- 4. Selection: dim the rest ------------------------------------------
+   The selected polygon's stroke thickening already comes from pathOptions
+   (`weightSelected`). Everyone else drops to 60% via ELEMENT opacity — a
+   compositor-friendly property, unlike re-lowering two paint opacities per
+   path. Reverses on deselect through the transition above. */
+.leaflet-overlay-pane path.zone-path--dimmed {
+  opacity: 0.6;
+}
+
+/* --- 5. Tile fade-in ------------------------------------------------------
+   Leaflet's own tile fade is a 200ms JS rAF loop; the map is created with
+   `fadeAnimation: false` so tiles are ours to fade instead. A tile starts at
+   opacity 0 and transitions to 1 when Leaflet marks it loaded — panning
+   brings new tiles in softly instead of popping them. */
+.leaflet-map-pane .leaflet-tile {
+  opacity: 0;
+  transition: opacity 0.3s var(--ease-out-quint);
+}
+
+.leaflet-map-pane .leaflet-tile.leaflet-tile-loaded {
+  opacity: 1;
+}
+
+/* --- Loop gate: no decoration moves while the camera does -----------------
+   Applied by <MapLoopGate/> on movestart/zoomstart, cleared on moveend/
+   zoomend. Later phases add their loop selectors to this same rule. */
+.leaflet-container.map-motion-paused .leaflet-overlay-pane path.zone-path--advisory {
+  animation-play-state: paused;
+}
+
+/* Phase 2: the chrome loops live OUTSIDE the Leaflet container (the legend
+   pips' pulse ring, the advisory drawer's tide trace, the scanline), so the
+   gate mirrors its class onto <body> (see MapLoopGate in Map.tsx). */
+body.map-motion-paused .animate-status-pulse,
+body.map-motion-paused .animate-tide-drift,
+body.map-motion-paused .animate-tide-scan {
+  animation-play-state: paused;
+}
+
+
+
+/* --- Reduced motion ------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  /* Same raised specificity as the rule it disables. */
+  .leaflet-overlay-pane path.zone-path.zone-path--loading {
+    animation: none;
+  }
+
+  .leaflet-overlay-pane path.zone-path--advisory {
+    /* The pulse and the march stop; the dashed outline stays as a static
+       shape signal at full stroke opacity. */
+    animation: none;
+  }
+
+  /* Status crossfades, selection dim and tile fades become instant state
+     changes. */
+  .leaflet-overlay-pane path.zone-path {
+    transition: none;
+  }
+
+  .leaflet-map-pane .leaflet-tile {
+    opacity: 1;
+    transition: none;
+  }
+}
+
+/* ===========================================================================
+   Phase 3 — report pins, user location, ambient orbs
+   =========================================================================== */
+
+/* --- Report pins ----------------------------------------------------------
+   The pin is a 16px divIcon; only the inner body/ring animate, and only via
+   transform + opacity. Fresh pins (reports that arrive AFTER mount) drop in
+   with one small overshoot and fire ONE expanding ring; pre-existing pins
+   render plain. */
+.report-pin-wrap {
+  background: none;
+  border: none;
+}
+
+.report-pin {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.report-pin-body {
+  position: absolute;
+  inset: 2px;
+  border-radius: 9999px;
+  background: currentColor;
+  border: 2px solid rgba(10, 12, 10, 0.85);
+  box-sizing: border-box;
+}
+
+.report-pin--fresh .report-pin-body {
+  animation: pin-drop 0.55s var(--ease-out-quint) both;
+}
+
+@keyframes pin-drop {
+  0%   { transform: translateY(-16px); opacity: 0; }
+  55%  { transform: translateY(2px);   opacity: 1; }
+  75%  { transform: translateY(-3px); }
+  100% { transform: translateY(0); }
+}
+
+.report-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  opacity: 0;
+  transform: scale(0.4);
+  animation: pin-ring 0.8s var(--ease-out-quint) 0.12s 1 both;
+}
+
+@keyframes pin-ring {
+  0%   { opacity: 0.7; transform: scale(0.4); }
+  100% { opacity: 0;   transform: scale(2.6); }
+}
+
+/* --- User location dot ------------------------------------------------------
+   Rendered only when navigator.geolocation yields a position. The halo is a
+   loop, so the map-movement gate pauses it (see the body rule below). */
+.loc-wrap {
+  background: none;
+  border: none;
+}
+
+.loc-dot {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: #4da3ff;
+  border: 2px solid rgba(8, 10, 12, 0.9);
+  box-sizing: border-box;
+}
+
+.loc-halo {
+  position: absolute;
+  inset: -9px;
+  border-radius: 9999px;
+  background: rgba(77, 163, 255, 0.35);
+  animation: loc-halo 2.4s var(--ease-out-quint) infinite;
+}
+
+@keyframes loc-halo {
+  0%   { transform: scale(0.45); opacity: 0.7; }
+  70%  { transform: scale(1.35); opacity: 0; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+/* --- Ambient orbs -----------------------------------------------------------
+   Soft radial gradients drifting on transform only (orbs.jakubantalik.com,
+   adapted). They live behind the header brand row and the drawer panel —
+   never over the map canvas, never near the pills. */
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.orb--header-a {
+  width: 220px;
+  height: 220px;
+  left: -60px;
+  top: -140px;
+  background: radial-gradient(closest-side, rgba(74, 138, 117, 0.28), transparent 72%);
+  animation: orb-drift-a 44s ease-in-out infinite alternate;
+}
+
+.orb--header-b {
+  width: 180px;
+  height: 180px;
+  right: 8%;
+  top: -120px;
+  background: radial-gradient(closest-side, rgba(240, 165, 0, 0.16), transparent 72%);
+  animation: orb-drift-b 52s ease-in-out infinite alternate;
+}
+
+.orb--panel {
+  width: 300px;
+  height: 300px;
+  right: -120px;
+  top: -120px;
+  background: radial-gradient(closest-side, rgba(255, 82, 82, 0.10), transparent 72%);
+  animation: orb-drift-a 60s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes orb-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(28px, 14px, 0) scale(1.12); }
+}
+
+@keyframes orb-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.08); }
+  to   { transform: translate3d(-24px, 10px, 0) scale(0.96); }
+}
+
+/* --- Reduced motion: everything above becomes a static state ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  .report-pin--fresh .report-pin-body,
+  .report-ring,
+  .loc-halo,
+  .orb {
+    animation: none;
+  }
+  .report-ring {
+    opacity: 0;
+  }
+  .loc-halo {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+}
+
+/* --- Loop gate: the new loops pause with the camera, like the old ones ------ */
+body.map-motion-paused .loc-halo,
+body.map-motion-paused .orb {
+  animation-play-state: paused;
+}
