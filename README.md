@@ -202,6 +202,9 @@ Submitting a report never changes a zone by itself — otherwise a rejected repo
 | `npx tsx scripts/generate-zones.ts` | Regenerate the zone polygons + coastline reference from `scripts/coastline-cache/` (verifies geometry, then writes `src/data/zones.ts` + `src/data/coastline.ts`) — `--check` verifies without writing (§10) |
 | `node scripts/fetch-coastline.mjs` | Raw OSM coastline fetch (runs in CI — `.github/workflows/fetch-coastline.yml` commits the result to `scripts/coastline-cache/`) |
 | `node scripts/fetch-seamarks.mjs` | Raw OSM seamark sweep for the shipping-overlay provenance (runs in CI — `.github/workflows/fetch-seamarks.yml`, §11) |
+| `node scripts/map-motion-pass.mjs` | Real-browser verification of the map's zone / camera / drawer / pin / location / glide / orb animations (headless Chromium; it needs a manual NSS/chromium-libs bootstrap because this sandbox has no system NSS — `CHROMIUM_LIB_DIR`, with the full recipe in `scripts/route-transition-pass.mjs`'s header) |
+| `node scripts/route-transition-pass.mjs` | Real-browser verification of the route dissolve (`/` <-> `/map`; `/admin` stays instant) |
+| `node scripts/route-transition-filmstrip.mjs` | Before/after filmstrip capture for that route dissolve |
 
 ---
 
@@ -230,6 +233,8 @@ src/
     image.ts              # photo size/type checks, downscale for demo mode
   components/
     Map.tsx               # react-leaflet map, polygons, popups
+    MapMarkers.tsx        # report pins, user location dot, intro camera glide (all rendered
+                           # inside Map.tsx)
     ShippingLayer.tsx     # toggleable PPTSS navigation-hazard line overlay
     ZonePopup.tsx         # popup content + "Report something here"
     ReportForm.tsx        # report modal / bottom sheet
@@ -238,6 +243,7 @@ src/
     ZoneDrawer.tsx        # right-edge zone drawer (collapsed/open): summary strip + full zone
                            # list, left status-accent cards, spring-driven with velocity-aware snap
     AdvisoryDrawer.tsx    # right-edge advisory-signal drawer (gauge card + grab tab)
+    MorphChevron.tsx      # the drawer chevron icon morph
     MapControlColumn.tsx  # top-right control column: zoom +/− then both drawer tabs
     StatusPip.tsx         # the status dot (pops on status change)
     Ambient.tsx            # map scanline + registration marks (schematic)
@@ -251,13 +257,19 @@ src/
     ferrofluid/            # the `ogl` shader itself -- reach it only via HeroBackdrop
     Map.test.tsx           # regression: the zone-path classes in a production render
   motion/
-    RouteTransition.tsx   # landing <-> map <-> admin route transition (fade + rise; see docs §19)
+    RouteTransition.tsx   # landing <-> map <-> admin route dissolve (fade + rise, gated on lazy
+                           # chunk load; see docs §21, supersedes §19)
+    mapMotion.ts          # zone load-in stagger, focus-flight padding, pure helpers (tested)
+    pins.ts               # report-pin centroid + intro-glide helpers (pure, tested)
+    statusKey.ts          # active-status resolution for the pill indicator (pure, tested)
     sidePanelAnchors.ts   # drawer snap maths: offsets, velocity projection, flick gating,
                            # plus isDragTail (pure, tested)
     readouts.ts           # data-derived drawer copy + gauge wave (pure, tested)
     useSidePanel.ts       # drawer position/states + clip-window motion values
   styles/
     statusTheme.ts        # status -> dark-theme colours, classes, map paint
+    map-motion.css        # zone pulse/dash/dim, pin drop/ring, location halo, ambient orbs
+    micro-interactions.css  # button press-scale
   pages/
     Landing.tsx            # / -- pre-map landing (DecryptedText hero, Waves, CountUp)
     MapPage.tsx             # /map public view (lazy-loaded)
@@ -423,6 +435,8 @@ Tiles and webfonts are allowed to fail (offline sandboxes): every assertion targ
 
 Additional one-off verification scripts (side-drawer layout, header fade timing, coastal polygon accuracy, hero full-bleed) live in `scripts/` alongside their write-ups in `docs/` — check there before re-deriving something that has already been measured.
 
+Two more real-browser passes cover this session's motion work. `scripts/map-motion-pass.mjs` drives `/map` at 320/390/1280 plus a reduced-motion run and asserts the animation itself rather than only its settled state: the zone load-in stagger, the advisory stroke pulse and dash march (and their freeze while the camera moves), selection dimming, the `flyTo` focus flight, the drawer's first-open stagger, the pill indicator slide and the chevron geometry morph, the pin drop + one-shot ring, the location halo's pause/resume, the intro glide firing exactly once per session, and orb placement never landing over the pills — with a rAF trace, so a loop that costs frames fails. `scripts/route-transition-pass.mjs` does the same for the dissolve: exit/enter fade timing read off the live animation, mean luminance across the dark handover, zero frames showing a blank map, and the enter holding at opacity 0 until the lazy chunk lands. The map-motion pass keeps its full check list in the script header and writes shots to `tmp/map-motion-shots/`; the dissolve is written up in `docs/design-references.md` §21, with before/after frames in `docs/route-transition-shots/`.
+
 ---
 
 ## 15. Making common changes
@@ -439,10 +453,23 @@ Additional one-off verification scripts (side-drawer layout, header fade timing,
 | **Tighten security** | Update `firestore.rules` and the Cloudinary unsigned preset restrictions. Replacing the passcode means adding Firebase Auth and gating `Admin.tsx` on it. |
 | **Add a new admin action** | Add the action to `src/store.ts` (all datastore calls live there) and call it from `src/pages/Admin.tsx`. |
 | **Adjust a drawer's snap feel** | `src/motion/sidePanelAnchors.ts` (projection time, flick velocity, spring constants) — pure and unit-tested, change here before touching `ZoneDrawer.tsx` / `AdvisoryDrawer.tsx`. |
+| **Adjust map zone/camera animation timing** | `src/motion/mapMotion.ts` (stagger, flight duration, focus padding), then `src/styles/map-motion.css`. |
+| **Adjust the route transition feel** | `src/motion/RouteTransition.tsx` (variants, durations) — re-run `scripts/route-transition-pass.mjs` after any change. |
 
 ---
 
-## Stack
+## 16. Recent UI work
+
+Four motion passes — presentation only, no data, network or geometry changes (the full check list for the first three lives in the header of `scripts/map-motion-pass.mjs`, or in the linked write-up):
+
+- **Zone & camera** — polygons fade in on a 70 ms stagger, advisory zones pulse their stroke and march their dash (frozen while the camera moves), a selection dims the other zones, and focusing a zone glides the camera with drawer-aware padding. `scripts/map-motion-pass.mjs`, Phase 1.
+- **Drawer, pill & chevron** — the drawer's first open staggers, the status pill's indicator slides, and the chevron folds through a `d` morph rather than spinning. `scripts/map-motion-pass.mjs`, Phase 2.
+- **Pins, location, glide & orbs** — report pins drop onto their zone's centroid with one expanding ring, the location dot's halo pauses with the camera, the wide-to-bay intro glide runs once per session, and the ambient orbs never sit over the pills. `scripts/map-motion-pass.mjs`, Phase 3; shots in `tmp/map-motion-shots/`.
+- **Route dissolve** — `/` <-> `/map` fades out then rises in, gated on the lazy chunk so the enter never fades in a spinner; `/admin` stays instant. `docs/design-references.md` §21; frames in `docs/route-transition-shots/`.
+
+---
+
+## 17. Stack
 
 React 19 · TypeScript 5.9 · Vite 8 · Zustand 5 · Tailwind CSS 4 · Leaflet + react-leaflet 5 · Firebase 12 (Firestore) · Cloudinary (photo uploads) · Vitest 5
 
