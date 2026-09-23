@@ -552,25 +552,40 @@ already-selected polygon). This is the test that fails against the old
 
 The visual checklist (peek row, drag/flick anchors, polygon fill ramp, attribution
 legibility, zoom-control clearance, report → approve E2E) previously lived in
-throwaway debug scripts. It is now split deliberately:
+throwaway debug scripts, then in `scripts/final-pass.mjs`. That script was deleted
+with the bottom sheet, and the checklist is now spread over three files:
 
-- **`scripts/final-pass.mjs`** — the script of record, run in **real Chromium**
-  (desktop 1280×800 + mobile 375×667 touch) against the **production** build. This
-  is the only half that can prove geometry and motion: bounding-box clearance,
-  computed fill-opacity mid-ramp, a real flick's release velocity, and the E2E loop
-  through a real browser. `node scripts/final-pass.mjs` → 6/6, exit 0.
-- **`src/pages/mapPass.test.tsx`** — the DOM/behaviour half of the same six items,
-  in **jsdom**, in CI. It proves what a DOM without a layout engine can prove:
-  peek-row content and the hidden body, anchor cycling, the `zone-path` ramp
-  attributes, attribution, zoom-control placement, and the full loop through the
-  demo backend. So the checklist has executable coverage even in a sandbox with no
-  browser at all.
+- **`scripts/map-drawers-pass.mjs`** (real Chromium, production build) — items 2, 4
+  and 5: structural clip tracking at every sampled drag position, a fast flick's
+  effect on both drawers, the tap-after-drag guard and ArrowLeft/Right, attribution
+  visible and on top through the open drawer, and zoom-control clearance including
+  the pills × zoom × tabs × windows × attribution overlap matrix.
+- **`scripts/map-motion-pass.mjs`** (real Chromium, production build) — item 3: the
+  `zone-path` fill ramp, computed mid-ramp and at rest, plus the selection
+  stroke/dim steps.
+- **`src/pages/mapPass.test.tsx`** — the DOM/behaviour half of all six items, in
+  **jsdom**, in CI. It proves what a DOM without a layout engine can prove: the
+  drawer header strip's content (the sheet's peek row is gone), the tab/state-dot
+  transitions, the `zone-path` ramp attributes, attribution, zoom-control
+  placement, and the full loop through the demo backend. So the checklist has
+  executable coverage even in a sandbox with no browser at all.
 
-The flick-velocity projection itself is pure logic in `sheetAnchors.test.ts` (§13).
+Two of the six items have **no working browser-side check**. Item 1 (peek row)
+retired with the bottom sheet and is jsdom-only. Item 6 (report → approve E2E) is
+carried by `src/pages/mapPass.test.tsx` and by the whole loop in
+`src/App.test.tsx`; `scripts/live-data-map-pass.mjs` still contains a browser
+version, but it is stale — it walks the retired bottom-sheet anchors and blocks on
+a `[data-anchor]` attribute nothing in `src/` sets any more, so it times out before
+reaching the report steps. Admin actions keep a live pass in
+`scripts/admin-responsive-pass.mjs`.
 
-**Honest limitation:** `final-pass.mjs` runs Chromium only. The two halves agree on
-*what* to check, but a sandbox without a real browser can only run the jsdom half —
-the geometry/motion assertions then ride on the last real-browser run, not on CI.
+The flick-velocity projection itself is pure logic in
+`src/motion/sidePanelAnchors.test.ts` (§13).
+
+**Honest limitation:** the two surviving browser halves run Chromium only, and
+neither runs in CI. The halves agree on *what* to check, but a sandbox without a
+real browser can only run the jsdom half — the geometry/motion assertions then ride
+on the last real-browser run, not on CI.
 
 ---
 

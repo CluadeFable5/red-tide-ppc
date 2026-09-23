@@ -424,14 +424,22 @@ The Firestore mapping tests matter because that code only runs against a real pr
 
 ### Browser pass (real Chromium)
 
-`scripts/final-pass.mjs` is the script of record for the six-item visual checklist (peek row, drag/flick anchors, polygon fill ramp, attribution legibility, zoom-control clearance, report → approve E2E). It runs the **production build** in headless Chromium at desktop and mobile sizes:
+The six-item visual checklist (peek row, drag/flick anchors, polygon fill ramp, attribution legibility, zoom-control clearance, report → approve E2E) no longer has a single script of record: `scripts/final-pass.mjs` was deleted with the bottom sheet. Four of the six items still run in a real browser, across two surviving halves:
+
+- `scripts/map-drawers-pass.mjs` — items **2, 4 and 5**: structural clip tracking at every sampled drag position plus the fast flick for both drawers (with the tap-after-drag guard, ArrowLeft/Right and reduced motion), attribution present/visible/on top *through* the open drawer, and zoom-control clearance with its 44px hit areas and the pills × zoom × tabs × windows × attribution overlap matrix.
+- `scripts/map-motion-pass.mjs` — item **3**: the `zone-path` fill ramp, computed mid-ramp and at rest, plus the selection stroke/thickening and dim steps.
+
+Items **1** and **6** have **no working browser-side check**. Item 1, the peek row, retired with the bottom sheet — its successor, the drawer header strip, is covered in jsdom only (`src/pages/mapPass.test.tsx`). Item 6, the report → approve E2E, is covered in jsdom by `src/pages/mapPass.test.tsx`, with the whole loop in `src/App.test.tsx`; the browser script that used to carry it, `scripts/live-data-map-pass.mjs`, is stale — it walks the retired bottom-sheet anchors and blocks on a `[data-anchor]` attribute nothing in `src/` sets any more, so it times out before reaching the report steps. (Admin actions do keep a live pass: `scripts/admin-responsive-pass.mjs`.)
+
+Both browser halves drive the **production build** in headless Chromium:
 
 ```bash
-npm run preview        # in one terminal — serves dist/ on :4173
-node scripts/final-pass.mjs   # in another — 6/6 checks, exit 0
+npm run preview                     # in one terminal — serves dist/ on :4173
+node scripts/map-drawers-pass.mjs   # in another — clip/drag/flick, attribution, zoom
+node scripts/map-motion-pass.mjs    # zone load-in/fill ramp, pulse, pins, location, glide, orbs
 ```
 
-Tiles and webfonts are allowed to fail (offline sandboxes): every assertion targets the app's own UI. Where a sandbox has no browser at all, the DOM/behaviour half of the same six items runs in CI via `src/pages/mapPass.test.tsx`.
+Tiles and webfonts are allowed to fail (offline sandboxes): every assertion targets the app's own UI. Where a sandbox has no browser at all, the DOM/behaviour half of all six items runs in CI via `src/pages/mapPass.test.tsx`.
 
 Additional one-off verification scripts (side-drawer layout, header fade timing, coastal polygon accuracy, hero full-bleed) live in `scripts/` alongside their write-ups in `docs/` — check there before re-deriving something that has already been measured.
 
