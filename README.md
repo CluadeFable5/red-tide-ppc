@@ -471,6 +471,6 @@ Four motion passes — presentation only, no data, network or geometry changes (
 
 ## 17. Stack
 
-React 19 · TypeScript 5.9 · Vite 8 · Zustand 5 · Tailwind CSS 4 · Leaflet + react-leaflet 5 · Firebase 12 (Firestore) · Cloudinary (photo uploads) · Vitest 5
+React 19 · TypeScript 5.9 · Vite 8 · React Router 7 · Zustand 5 · Motion 13 · Tailwind CSS 4 · Leaflet + react-leaflet 5 · ogl 1 (hero WebGL) · Firebase 12 (Firestore) · Cloudinary (photo uploads) · Vitest 5
 
 **Not a medical or food-safety authority.** If someone shows symptoms of PSP after eating shellfish, treat it as an emergency and get them to a hospital immediately.
