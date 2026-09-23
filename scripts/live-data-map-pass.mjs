@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 // Production/demo browser regression: real local fonts, live-region semantics,
-// map/sheet/popup/report/admin flow at every requested width and motion setting.
+// map/drawer/popup/report/admin flow at every requested width and motion setting.
+//
+// The browser-side owner of item 6 of the six-item checklist (report → approve
+// E2E). Until 2026-09-24 it walked the bottom sheet's mid/full/peek anchors;
+// those anchors are gone, so it now drives the right-edge zone drawer's two
+// states (open / collapsed) through the grab tab and selects from the drawer's
+// zone list. The popup, report form, admin approve and live-region assertions
+// are unchanged. Run against a demo-backend production build:
+//   npm run preview && node scripts/live-data-map-pass.mjs
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -44,21 +52,33 @@ try {
       assert.ok(Math.abs(mapBox.width - width) < 1 && Math.abs(mapBox.height - height) < 1, 'Map remains full viewport after route entry')
       assert.equal(await page.locator('.zone-path').count(), 7)
       const sheet = page.getByRole('region', { name: 'Advisory and zone list' })
-      const handle = sheet.locator('button[aria-label]').first()
-      for (const anchor of ['mid', 'full', 'peek']) {
-        await handle.click()
-        await page.waitForFunction((anchor) => document.querySelector('[data-anchor]')?.getAttribute('data-anchor') === anchor, anchor)
+      const drawerTab = page.getByTestId('zone-drawer-tab')
+      // The drawer starts collapsed below 768px and open at or above it
+      // (MapPage.initialZoneDrawerState), so drive it to a known state instead
+      // of assuming one. Verified against the same tab click map-drawers-pass
+      // uses for both drawers.
+      const setDrawer = async (state) => {
+        if ((await sheet.getAttribute('data-state')) !== state) await drawerTab.click()
+        await page.waitForFunction(
+          (state) => document.querySelector('[data-testid="zone-drawer"]')?.getAttribute('data-state') === state,
+          state,
+        )
         await page.waitForTimeout(600)
       }
+      await setDrawer('open')
+      await page.screenshot({ path: resolve(output, `map-${width}-${reducedMotion}-drawer-open.png`) })
+      await setDrawer('collapsed')
+      await page.screenshot({ path: resolve(output, `map-${width}-${reducedMotion}-drawer-collapsed.png`) })
       await page.getByRole('button', { name: 'Reset view', exact: true }).click()
       await page.waitForTimeout(700)
       await page.screenshot({ path: resolve(output, `map-${width}-${reducedMotion}.png`) })
 
-      // Select via zone list, return to peek, then click the focused polygon.
-      await handle.click()
-      await page.waitForTimeout(600)
+      // Select via the drawer's zone list, then click the focused polygon.
+      await setDrawer('open')
       const name = 'Honda Bay — Inner Islands'
-      await sheet.getByRole('button', { name, exact: true }).click()
+      // No `exact`: the card's accessible name concatenates the row's text
+      // (name, zone tag + relative time, description), not just the name.
+      await sheet.getByRole('button', { name }).click()
       await page.waitForTimeout(700)
       await page.locator('.zone-path--selected').click()
       await page.locator('.leaflet-popup').waitFor()
@@ -87,7 +107,7 @@ try {
       assert.ok(fontRequests.length > 0 && fontRequests.every((url) => new URL(url).origin === new URL(baseURL).origin))
       assert.deepEqual(errors, [])
       results.push({ width, reducedMotion, mapBox, fontRequests, status: await live.textContent(), result: 'PASS' })
-      console.log(`PASS ${width}px ${reducedMotion}: local fonts, map geometry, anchors, popup, report → approve, live data`)
+      console.log(`PASS ${width}px ${reducedMotion}: local fonts, map geometry, drawer states, popup, report → approve, live data`)
       await context.close()
     }
   }
