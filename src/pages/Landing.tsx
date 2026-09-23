@@ -1,6 +1,8 @@
 import { LiveDataStatus } from '../components/LiveDataStatus'
 import { useMemo, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { motion, useReducedMotion } from 'motion/react'
+import type { Variants } from 'motion/react'
 import { BlurText } from '../components/BlurText'
 import { CountUp } from '../components/CountUp'
 import { DecryptedText } from '../components/DecryptedText'
@@ -70,6 +72,8 @@ const MAP_CTA_PREFETCH = {
 const LANDING_CONTAINER =
   'w-full max-w-2xl px-5 min-[400px]:px-6 md:max-w-4xl md:px-8 lg:max-w-6xl xl:max-w-7xl xl:px-10 2xl:max-w-[100rem] 2xl:px-12'
 
+const EASE_OUT_QUINT = [0.22, 1, 0.36, 1] as const
+
 const HOW_IT_WORKS = [
   'Find your shore — seven zones cover the coast, from the city bay to St. Paul Bay.',
   'Report what you see — water colour, dead shellfish; ten words is enough.',
@@ -81,6 +85,7 @@ export function Landing() {
   const reports = useAppStore((state) => state.reports)
   const zonesReady = useAppStore((state) => state.zonesReady)
   const reportsReady = useAppStore((state) => state.reportsReady)
+  const reduceMotion = useReducedMotion()
 
   const counts = useMemo(() => {
     const result: Record<ZoneStatus, number> = { safe: 0, unconfirmed: 0, advisory: 0 }
@@ -95,6 +100,68 @@ export function Landing() {
 
   const dominant = dominantZoneStatus(counts)
   const dominantTheme = zoneTheme(dominant)
+
+  const overviewContainerVariants: Variants = useMemo(
+    () => ({
+      hidden: {},
+      show: {
+        transition: {
+          staggerChildren: reduceMotion ? 0 : 0.07,
+          delayChildren: reduceMotion ? 0 : 0.15,
+        },
+      },
+    }),
+    [reduceMotion],
+  )
+
+  const overviewChildVariants: Variants = useMemo(
+    () => ({
+      hidden: { opacity: 0, y: reduceMotion ? 0 : 10 },
+      show: {
+        opacity: 1,
+        y: 0,
+        transition: {
+          duration: reduceMotion ? 0 : 0.4,
+          ease: EASE_OUT_QUINT,
+        },
+      },
+    }),
+    [reduceMotion],
+  )
+
+  const primerContainerVariants: Variants = useMemo(
+    () => ({
+      hidden: { opacity: 0, y: reduceMotion ? 0 : 12 },
+      show: {
+        opacity: 1,
+        y: 0,
+        transition: {
+          duration: reduceMotion ? 0 : 0.45,
+          ease: EASE_OUT_QUINT,
+          staggerChildren: reduceMotion ? 0 : 0.08,
+        },
+      },
+    }),
+    [reduceMotion],
+  )
+
+  const primerItemVariants: Variants = useMemo(
+    () => ({
+      hidden: { opacity: 0, y: reduceMotion ? 0 : 8 },
+      show: {
+        opacity: 1,
+        y: 0,
+        transition: {
+          duration: reduceMotion ? 0 : 0.35,
+          ease: EASE_OUT_QUINT,
+        },
+      },
+    }),
+    [reduceMotion],
+  )
+
+  const hasIntersectionObserver =
+    typeof window !== 'undefined' && typeof window.IntersectionObserver === 'function'
 
   return (
     <div className="relative min-h-dvh overflow-x-clip bg-ink text-paper">
@@ -219,10 +286,15 @@ export function Landing() {
                 </div>
               </section>
 
-              <div className="mt-14 min-w-0 sm:mt-16 lg:mt-0 lg:rounded-xl lg:border lg:border-line lg:bg-ink-2/60 lg:p-6 xl:p-8">
+              <motion.div
+                variants={overviewContainerVariants}
+                initial="hidden"
+                animate="show"
+                className="mt-14 min-w-0 sm:mt-16 lg:mt-0 lg:rounded-xl lg:border lg:border-line lg:bg-ink-2/60 lg:p-6 xl:p-8"
+              >
                 <h2 className="mb-5 hidden text-base font-semibold text-paper lg:block">Coastal overview</h2>
                 {/* -------------------------------------------------- live status */}
-                <section aria-label="Live status">
+                <motion.section variants={overviewChildVariants} aria-label="Live status">
                   {zonesReady ? (
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-lg border border-line bg-ink-2/60 px-3.5 py-2.5 text-[13px] leading-relaxed text-muted">
                       <StatusPip
@@ -248,10 +320,14 @@ export function Landing() {
                       Reading the water…
                     </p>
                   )}
-                </section>
+                </motion.section>
 
                 {/* ------------------------------------------------------ figures */}
-                <section aria-label="Figures" className="mt-3.5 grid grid-cols-3 gap-2.5 sm:mt-4 sm:gap-3">
+                <motion.section
+                  variants={overviewChildVariants}
+                  aria-label="Figures"
+                  className="mt-3.5 grid grid-cols-3 gap-2.5 sm:mt-4 sm:gap-3"
+                >
                   <Figure label="Zones watched" value={zones.length} ready={zonesReady} />
                   <Figure label="Pending reports" value={pendingTotal} ready={reportsReady} />
                   <Figure
@@ -260,8 +336,8 @@ export function Landing() {
                     ready={zonesReady}
                     valueClass={counts.advisory > 0 ? 'text-advisory' : undefined}
                   />
-                </section>
-              </div>
+                </motion.section>
+              </motion.div>
             </div>
           </div>
         </div>
@@ -298,25 +374,54 @@ export function Landing() {
             </section>
 
             {/* ----------------------------------------------------- primer */}
-            <section className="min-w-0" aria-label="What is red tide">
-              <h2 className="text-base font-semibold text-paper lg:text-lg">What is red tide?</h2>
-              <ul className="mt-4 space-y-3.5 text-sm leading-relaxed text-muted sm:mt-3 sm:space-y-2.5 lg:text-base">
-                <Bullet>
-                  A bloom of microscopic algae colours the water. Shellfish —{' '}
-                  <em>tahong</em>, <em>talaba</em>, <em>halaan</em>,{' '}
-                  <em>alamang</em> — concentrate its toxin as they feed.
-                </Bullet>
-                <Bullet>
-                  Eating affected shellfish causes numbness within 30 minutes to
-                  2 hours, then trouble breathing. Cooking does not destroy the
-                  toxin, and there is no antidote.
-                </Bullet>
-                <Bullet>
-                  Only BFAR can confirm red tide by lab test. This app warns
-                  early — it does not replace official advisories.
-                </Bullet>
-              </ul>
-            </section>
+            {hasIntersectionObserver ? (
+              <motion.section
+                className="min-w-0"
+                aria-label="What is red tide"
+                variants={primerContainerVariants}
+                initial="hidden"
+                whileInView="show"
+                viewport={{ once: true, amount: 0.2 }}
+              >
+                <h2 className="text-base font-semibold text-paper lg:text-lg">What is red tide?</h2>
+                <ul className="mt-4 space-y-3.5 text-sm leading-relaxed text-muted sm:mt-3 sm:space-y-2.5 lg:text-base">
+                  <Bullet variants={primerItemVariants}>
+                    A bloom of microscopic algae colours the water. Shellfish —{' '}
+                    <em>tahong</em>, <em>talaba</em>, <em>halaan</em>,{' '}
+                    <em>alamang</em> — concentrate its toxin as they feed.
+                  </Bullet>
+                  <Bullet variants={primerItemVariants}>
+                    Eating affected shellfish causes numbness within 30 minutes to
+                    2 hours, then trouble breathing. Cooking does not destroy the
+                    toxin, and there is no antidote.
+                  </Bullet>
+                  <Bullet variants={primerItemVariants}>
+                    Only BFAR can confirm red tide by lab test. This app warns
+                    early — it does not replace official advisories.
+                  </Bullet>
+                </ul>
+              </motion.section>
+            ) : (
+              <section className="min-w-0" aria-label="What is red tide">
+                <h2 className="text-base font-semibold text-paper lg:text-lg">What is red tide?</h2>
+                <ul className="mt-4 space-y-3.5 text-sm leading-relaxed text-muted sm:mt-3 sm:space-y-2.5 lg:text-base">
+                  <Bullet>
+                    A bloom of microscopic algae colours the water. Shellfish —{' '}
+                    <em>tahong</em>, <em>talaba</em>, <em>halaan</em>,{' '}
+                    <em>alamang</em> — concentrate its toxin as they feed.
+                  </Bullet>
+                  <Bullet>
+                    Eating affected shellfish causes numbness within 30 minutes to
+                    2 hours, then trouble breathing. Cooking does not destroy the
+                    toxin, and there is no antidote.
+                  </Bullet>
+                  <Bullet>
+                    Only BFAR can confirm red tide by lab test. This app warns
+                    early — it does not replace official advisories.
+                  </Bullet>
+                </ul>
+              </section>
+            )}
           </div>
 
           <div className="mt-14 sm:mt-12">
@@ -368,7 +473,19 @@ function Figure({
   )
 }
 
-function Bullet({ children }: { children: ReactNode }) {
+function Bullet({ children, variants }: { children: ReactNode; variants?: import('motion/react').Variants }) {
+  if (variants) {
+    return (
+      <motion.li variants={variants} className="flex gap-3 sm:gap-2.5">
+        <span
+          className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-accent/70"
+          aria-hidden="true"
+        />
+        <span>{children}</span>
+      </motion.li>
+    )
+  }
+
   return (
     <li className="flex gap-3 sm:gap-2.5">
       <span

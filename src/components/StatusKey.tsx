@@ -51,6 +51,8 @@ export interface StatusKeyProps {
 }
 
 export function StatusKey({ counts, chromeOpacity, activeStatus }: StatusKeyProps) {
+  const reduceMotion = useReducedMotion()
+
   // Constant visibility when no fade driver is supplied — created once.
   const fallbackOpacity = useRef<MotionValue<number> | null>(null)
   if (fallbackOpacity.current === null) {
@@ -69,6 +71,9 @@ export function StatusKey({ counts, chromeOpacity, activeStatus }: StatusKeyProp
   return (
     <motion.div
       style={{ opacity }}
+      initial={reduceMotion || chromeOpacity ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: reduceMotion ? 0 : 0.3, ease: 'easeOut' }}
       className="pointer-events-none absolute left-3 top-[4.5rem] z-[1010] mt-[env(safe-area-inset-top)]"
       data-testid="status-key"
     >
