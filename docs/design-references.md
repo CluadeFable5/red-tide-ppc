@@ -1047,6 +1047,11 @@ not reintroduce a literal.
 
 ## 19. Route-entry transition for /map — and what the old "opacity-only" rule got wrong (2026-09-15)
 
+> **Superseded by §21 (2026-09-23).** The 120ms exit / 300ms enter below belong to the
+> `/map`-entry-only version. The dissolve now runs both ways between `/` and `/map`, the exit
+> is 350ms, the enter 400ms, and the entry is gated on the map chunk instead of fading in the
+> Suspense fallback. §19.2 (why a transform is allowed) still holds.
+
 **Branch:** `arena/01a0a2ec-red-tide-ppc` → `main`
 **Scope:** presentation only. `store.ts`, `firebase.ts`, `data/**`, `hooks/**` untouched; the
 sheet/anchor mechanics (§13) and the routing structure are unchanged. Verified with
@@ -1099,8 +1104,9 @@ checks: forward and reverse navigation animate in budget and never double-mount 
 Leaflet's container, map pane, tiles and zone polygons are identical after the animated entry
 and on a plain `/map` load; the reduced-motion swap is instant both ways; a scrolled landing
 still lands the map at the viewport origin; the map chunk is prefetched on hover; and
-`MapLoadingOverlay` sits on top of the transitioned-in map when the zone feed is slow
-(checked against a build whose first zone emit is delayed). 12/12 assertions pass.
+`MapLoadingOverlay` sits on top of the transitioned-in map when the zone feed is slow.
+12/12 assertions passed *at the time*; the suite has since grown and the delayed-zone-feed leg
+is skipped in this sandbox — see §21.4.
 
 Two pre-existing observations, measured rather than assumed:
 
@@ -1217,3 +1223,131 @@ The `Waves` mask (transparent to 380px) now overlaps the band's fading tail on s
 both layers are already frame-capped and the crossfade is the intended dissolve.
 
 `npm run typecheck`, `npm test` (**190 passing, 20 files**) and `npm run build` all green.
+
+---
+
+## 21. The route dissolve: `/` ⇄ `/map`, and the chunk-gated entry (2026-09-23)
+
+**Branch:** `arena/01a0cbac-red-tide-ppc`
+**Scope:** presentation only — `src/motion/RouteTransition.tsx`, `src/App.tsx`, `index.html`
+(one inline attribute) and their tests, plus the two browser passes. The bottom sheet, zone
+drawer, advisory panel, shipping overlay, Leaflet internals and map interaction are untouched.
+No new dependency, no CSS transition/keyframe, no `setTimeout` or manual delay anywhere.
+
+Supersedes the timing in §19: the dissolve now runs in **both** directions of `/` ⇄ `/map`, the
+outgoing page fades rather than being cut in 120ms, and the incoming frame is held at opacity 0
+until its chunk has actually resolved. Everything §19 established about the transform and the
+containing block still holds and is re-verified below.
+
+### 21.1 What changed
+
+| | value | why |
+| --- | --- | --- |
+| exit | `opacity 1 → 0`, **350ms**, `ease: [0.42, 0, 1, 1]` (true `easeIn`) | leaves decisively; no `y`/`scale` — the page is not going anywhere |
+| dark beat | the tail of the exit plus the head of the enter | `mode="wait"` makes the halves sequential, not overlapping |
+| enter | `opacity 0 → 1`, **400ms**, `ease: [0.22, 1, 0.36, 1]` (`--ease-out-quint`), `y: 8 → 0` | arriving slightly slower than leaving reads as deliberate; the rise is the only transform, and it ends on identity |
+| warm tap → arrived | 750ms | the budget when the chunk is already in cache |
+| `/admin` | instant, both directions | `dissolve` is false unless **both** ends of the navigation are in `{'/', '/map'}` |
+| reduced motion | instant, no keyframes written at all | a fade is still motion; `useReducedMotion()` gates it, not a media query |
+
+Three details carry the experience:
+
+1. **The exit's easing is `easeIn`, not the mirror of the quint.** The mirrored curve
+   (`0.64, 0, 0.78, 0`) is still at ~40% opacity nine tenths of the way through the 350ms, so
+   the visible fade collapses into the last ~35ms and reads as a flicker to black. Measured
+   mid-flight, fraction → opacity: `30% → 0.87 · 50% → 0.69 · 70% → 0.47 · 90% → 0.16`.
+2. **The incoming frame is gated on its chunk.** `RouteTransition` takes a `prepare` map
+   (`{'/map': prefetchMapPage}`) and each frame is a fresh component instance keyed by
+   pathname, so `ready` starts false for a cold `/map` and flips in a layout effect as the
+   promise resolves. `animate` is `ready ? AT_REST : ENTER_FROM`: the fade-in *cannot* start
+   before the module is in memory. A second visit asks its own question instead of inheriting
+   the first answer.
+3. **The Suspense fallback is invisible and empty.** `MapLoadingFallback` is a transparent
+   `div` (`min-h-dvh bg-ink opacity-0`) that keeps the box and the `role="status"` /
+   `aria-label` for assistive tech. Without the gate above, what the enter would fade in is a
+   spinner — which is exactly what the pre-change build does, and what the filmstrip below
+   captures side by side.
+
+`/admin` needs no branch of its own: AnimatePresence re-resolves an exiting child's `exit`
+against its *current* `custom`, so a boolean `dissolve` flag reference-counts the pair at exit
+time — the one thing the outgoing element's frozen props cannot answer for themselves.
+Deliberately a boolean rather than a direction: the reverse transition is the same pair with
+the roles swapped, and needed no second system.
+
+The gate lives on the frame, not the router, and `App.tsx` still prefetches on CTA
+pointer-enter/focus only — never on load — so the landing page and `/admin` do not pay for a
+map they may never open (§14.3).
+
+### 21.2 What the browser pass verifies
+
+`scripts/route-transition-pass.mjs` runs the production build in real Chromium.
+**13/13 assertions pass.** The run prints its own summary and writes its shots to
+`docs/route-transition-shots/`.
+
+| # | Assertion | Evidence from the passing run |
+| --- | --- | --- |
+| 0 | plain `/map` load, reference geometry | container 1280×800, zoom 11, 24 tiles, 7 polygons, 29364px², scale [1,1] |
+| 1 | forward dissolve: budgets, no blank, no double mount | exit 350ms `[1,0]`, enter 400ms `[0,1]`, 107 visible partial-opacity frames, transforms seen `matrix(1,0,0,1,0,8)` → identity, 0 frames holding an empty map, peak 1 `.leaflet-container`, 0 frames with both pages mounted |
+| 2 | Leaflet measures the same as a plain load | container, zoom, map-pane transform, tile rects and polygon boxes all identical |
+| 3 | frame at rest carries nothing | `opacity: 1; transform: none; will-change: auto`, and the `fixed inset-0` map layer is exactly `[0,0,1280,800]` |
+| 4a/4b | reverse via the brand link, and via browser back | same budgets both ways, 0 double-mounted frames, geometry intact after back/forward |
+| 5 | `/admin` is instant **in and out**, and `/` → `/map` still dissolves afterwards | 0 partial-opacity frames and 0 animations on the admin frame each way; one passcode field and one Unlock button (the duplicate-controls regression `location` guards) |
+| 6a/6b | reduced motion, both directions | 0 partial-opacity frames, 0 animations, no transform written, instant swap |
+| 7 | scrolled landing → `/map` | scrollY 0, map at the viewport origin |
+| 8 | the chunk is prefetched on hover, not on load | requests on load `["leaflet chunk"]` → after hover `+["MapPage chunk"]` |
+| 10 | **delayed chunk**: dark until it lands, then a full fade-in | with `MapPage-*.js` held 1400ms on the wire: 26 frames on `/map` with no map yet, every visible frame the *outgoing* page, 0 frames showing an empty/blank map, fallback `{opacity: 0, content: 0}`, no fade-in animation started early, then the enter runs 400ms `[0,1]` |
+| 11 | the handover is dark at every step | html/body `rgb(10,10,10)` before and after; a frame frozen at 347ms of the 350ms exit (99%, the darkest moment) has mean luminance **10.2/255**, brightest pixel **14/255** (a white flash would put that near 255) |
+
+`scripts/route-transition-filmstrip.mjs` is the picture version: each cell is a real screenshot
+of the live transition, frozen by pausing the WAAPI animation the page actually created.
+
+`npm run typecheck`, `npx vitest run` (**294 tests, 30 files**) and `npm run build` are green;
+`src/motion/RouteTransition.test.tsx` covers both directions, the chunk gate, `/admin` both
+ways, reduced motion and the single-frame invariant in jsdom.
+
+### 21.3 Before and after
+
+Same six moments, same two builds — `filmstrip-forward.png` (landing → map) and
+`filmstrip-reverse.png` (map → landing), both in `docs/route-transition-shots/`.
+
+- **BEFORE** (the pre-change build — `HEAD`, `e85acaa` — served on `:4174`): a 120ms cut, then
+  a 300ms enter with a scale/rise. Its "arriving" cells are a **centred spinner fading in** —
+  the Suspense fallback, because nothing gated the enter on the chunk. On a slow connection
+  that is what the transition dissolves into.
+- **AFTER** (`:4173`, this pass): 350ms `easeIn` exit, dark, then a 400ms `easeOut` enter with
+  an 8px rise, covering an already-rendered map.
+
+The measurement line under each cell is read from the frozen frame itself (duration, scrub
+point, computed opacity), and the warning line flags any enter frame that is fading in the
+fallback rather than a page. The capture pauses each animation the moment `motion` creates it:
+the pre-change exit is 120ms, which is shorter than one frame interval on a machine busy
+compiling the map chunk, and an exit that finishes is also an exit whose frame has been
+unmounted — so a missed one could never be recovered.
+
+### 21.4 Honest limits
+
+- **Chromium is not a project dependency.** The pass runs against `@sparticuz/chromium` +
+  `puppeteer-core`, symlinked into `node_modules` (setup documented at the top of
+  `scripts/route-transition-pass.mjs`). CI needs those before either script can run; the
+  vitest suite covering the same behaviour does not.
+- **§9 is skipped in this sandbox, not passed.** `MapLoadingOverlay` only appears while the
+  zone feed is out, and the demo backend (`backend.demo.ts`) emits synchronously with no
+  latency knob, so the overlay is never on screen to measure. Delaying it would mean shipping
+  a modified backend to test it, which is worse than saying so. It is also the one surface in
+  this pass that is *not* part of the transition: the overlay is a map-internal state, and its
+  only interaction with the route frame — a `position: fixed` child under a leftover
+  transform — is covered by §3 and §21.2's geometry checks. §19's claim that this was checked
+  against a delayed build is no longer reproducible here.
+- **The sandbox is software-rendered and CPU-bound.** The `/map` chunk executing plus Leaflet
+  mounting blocks the main thread ~2.7s here (2237ms on the pre-change build — measured, and
+  pre-existing), which is why the handover can still read as a pause locally and why the
+  delayed-chunk window in §10 is seconds long. It is not caused by this pass, and it is far
+  smaller on real hardware; `prefetchMapPage` is what keeps it off the click path on a real
+  connection.
+- **jsdom caveat, for anyone extending the tests.** Wrapping a whole navigation in one long
+  `act()` makes the enter look absent: motion's animation callbacks and the `prepare` gate both
+  schedule React updates that a single long scope buffers to the end. Wait in chunks
+  (`settle(ms, step)`) or the test will lie to you.
+- The `AdminGate` page's "Public map" link points at `/` rather than `/map` (pre-existing label
+  mismatch, `src/components/AdminGate.tsx`). Left alone; the pass walks the path the app
+  actually offers.

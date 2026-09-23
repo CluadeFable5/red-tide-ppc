@@ -2,7 +2,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import App from './App'
+import App, { MapLoadingFallback } from './App'
 import { clearDemoData, createDemoBackend } from './lib/backend.demo'
 import { setBackendForTesting } from './lib/backend'
 import { useAppStore } from './store'
@@ -95,6 +95,21 @@ describe('landing page (/)', () => {
     // The live readout lands from the demo backend (synchronous subscribe).
     expect(await screen.findByText('7 zones watched')).toBeTruthy()
     expect(screen.getByText('Zones watched')).toBeTruthy()
+  })
+})
+
+describe('route transition', () => {
+  it('shows nothing at all while the map chunk is loading', () => {
+    // The fallback is only on screen inside a route dissolve, where the caller
+    // is holding the whole frame at opacity 0. Anything visible here — a spinner,
+    // a brand mark, any content — would be fading in blank space before the map
+    // arrives, which is the one thing that makes a route transition look
+    // unfinished. `scripts/route-transition-pass.mjs` measures the same thing in
+    // a browser with the map chunk deliberately delayed.
+    const { container } = render(<MapLoadingFallback />)
+    const el = container.firstElementChild as HTMLElement
+    expect(el.className).toContain('opacity-0')
+    expect(el.innerHTML).toBe('')
   })
 })
 
