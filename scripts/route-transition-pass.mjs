@@ -37,27 +37,36 @@
  *
  * WHAT IT CHECKS
  * --------------
- *  1. Forward `/` → `/map` (the "Open the map" CTA) really animates: duration,
- *     keyframes, intermediate frames on screen, and never two maps mounted.
+ *  1. Forward `/` → `/map` (the "Open the map" CTA) really animates: exit and
+ *     enter durations and keyframes, both halves seen mid-flight on screen, the
+ *     arrival transform, and never two maps mounted.
  *  2. Leaflet's boxes after the animated entry are identical to a plain `/map`
  *     load — container, map pane, tiles and zone polygons, once settled.
  *  3. Nothing is left on the route frame at rest (a residual transform would
  *     re-parent MapPage's `position: fixed` map layer).
  *  4. The seam: no frame with both pages mounted, and the size of the handover
  *     gap plus the post-click main-thread block, reported.
- *  5. Reverse: brand link `/map` → `/`, and the browser back button.
- *  6. `/admin` through the same shared frame, unduplicated.
+ *  5. Reverse: brand link `/map` → `/`, and the browser back button — the same
+ *     dissolve, the other way round.
+ *  6. `/admin` is *not* part of the dissolve: it swaps instantly in both
+ *     directions, with no opacity interpolated and no animation on the frame.
  *  7. prefers-reduced-motion emulated for real, both ways: an instant swap, not
  *     a shorter animation, and no transform ever written.
  *  8. A scrolled landing → `/map` still lands the map at the viewport origin.
  *  9. The map chunk is prefetched on CTA hover, before the click.
  * 10. MapLoadingOverlay on top of the transitioned-in map (needs --slow=URL).
+ * 11. The load gate, with the `/map` chunk delayed on the wire: the incoming
+ *     frame holds at opacity 0 over an empty Suspense fallback, nothing visible
+ *     is on screen, and the enter starts only once the chunk has arrived.
+ * 12. No white anywhere in the handover: html/body stay ink, and the pixels of
+ *     the mid-transition dark frame are measured (pngjs) rather than assumed.
  *
  * Screenshots land in docs/route-transition-shots/.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import zlib from 'node:zlib'
 import chromium from '@sparticuz/chromium'
+import { PNG } from 'pngjs'
 import puppeteer from 'puppeteer-core'
 
 const BASE = process.argv.find((a) => a.startsWith('http')) ?? 'http://localhost:4173'
@@ -118,6 +127,31 @@ const TILE_PNG = (() => {
   ])
 })()
 
+/**
+ * Mean and peak luminance of a PNG on disk.
+ *
+ * Used to hold the dark beat to an actual measurement: "the moment between two
+ * pages is black" is a claim about pixels, and a screenshot plus this function is
+ * the only way to check it without trusting the CSS.
+ */
+function luminanceOf(path) {
+  const png = PNG.sync.read(readFileSync(path))
+  let max = 0
+  let total = 0
+  for (let i = 0; i < png.data.length; i += 4) {
+    const l =
+      0.2126 * png.data[i] + 0.7152 * png.data[i + 1] + 0.0722 * png.data[i + 2]
+    if (l > max) max = l
+    total += l
+  }
+  return {
+    max: Math.round(max),
+    mean: Math.round((total / (png.width * png.height)) * 10) / 10,
+    width: png.width,
+    height: png.height,
+  }
+}
+
 const results = []
 const record = (id, name, pass, detail) => {
   results.push({ id, name, pass })
@@ -155,6 +189,11 @@ const INSTRUMENT = () => {
       // Computed, not inline: a running WAAPI animation overrides the inline
       // value motion wrote, so el.style.opacity stays at its start value the
       // whole way through and says nothing about what is on screen.
+      // The /map Suspense fallback, if it is in the DOM: how visible it is and
+      // whether it renders anything at all. Read from the page, in the frame
+      // loop, so a check that depends on it does not need a protocol round trip
+      // (which is delayed while a request is being held open).
+      const fallback = document.querySelector('[role="status"][aria-label="Loading map"]')
       window.__trace.push({
         t: Math.round(performance.now()),
         path: location.pathname,
@@ -167,6 +206,10 @@ const INSTRUMENT = () => {
           }
         }),
         leaflets: document.querySelectorAll('.leaflet-container').length,
+        fallback: fallback
+          ? { op: Number(getComputedStyle(fallback).opacity), html: fallback.innerHTML.length }
+          : null,
+        busyOverlay: Boolean(document.querySelector('[role="status"][aria-busy="true"]')),
       })
       if (window.__trace.length > 3000) window.__trace.shift()
     }
@@ -236,19 +279,26 @@ const INSTRUMENT = () => {
    * Pause the route frame's enter animation at `ms` and hold it there, so the
    * next screenshot is an exact mid-flight frame rather than a lucky one.
    */
-  window.__freezeAt = (ms) => new Promise((resolve) => {
+  window.__freezeAt = (ms, which = 'enter') => new Promise((resolve) => {
     const deadline = performance.now() + 8000
     const attempt = () => {
       const running = document.getAnimations().find((a) => {
         const t = a.effect?.target
         if (!isFrame(t)) return false
         const keys = a.effect.getKeyframes() ?? []
-        return Number(keys[keys.length - 1]?.opacity) === 1 // the enter
+        const first = Number(keys[0]?.opacity)
+        const last = Number(keys[keys.length - 1]?.opacity)
+        // the enter (0 → 1) or the exit (1 → 0)
+        return which === 'enter' ? last === 1 : first === 1 && last === 0
       })
       if (running) {
         running.pause()
-        running.currentTime = ms
-        resolve({ frozen: true, at: ms, dur: running.effect.getComputedTiming().duration })
+        const duration = running.effect.getComputedTiming().duration
+        // A value <= 1 is a fraction of the animation, so a checkpoint can be
+        // expressed relative to the duration rather than to a hard-coded ms.
+        const at = ms <= 1 ? duration * ms : ms
+        running.currentTime = at
+        resolve({ frozen: true, at: Math.round(at), dur: duration })
         return
       }
       if (performance.now() > deadline) { resolve({ frozen: false }); return }
@@ -271,7 +321,13 @@ const INSTRUMENT = () => {
   }).observe({ entryTypes: ['longtask'] })
 }
 
-async function newPage({ reducedMotion = false, width = 1280, height = 800 } = {}) {
+async function newPage({
+  reducedMotion = false,
+  width = 1280,
+  height = 800,
+  /** Hold the lazy `/map` chunk on the wire for this long, to test the gate. */
+  delayMapChunk = 0,
+} = {}) {
   const page = await browser.newPage()
   await page.setViewport({ width, height, deviceScaleFactor: 1 })
   if (reducedMotion) {
@@ -281,6 +337,11 @@ async function newPage({ reducedMotion = false, width = 1280, height = 800 } = {
   page.on('request', (req) => {
     if (req.url().includes('tile.openstreetmap.org')) {
       return req.respond({ status: 200, contentType: 'image/png', body: TILE_PNG })
+    }
+    // The chunk React.lazy owns, and therefore the promise the route gate
+    // waits on. Delaying it *is* the slow-network case the gate exists for.
+    if (delayMapChunk && /MapPage-.*\.js/.test(req.url())) {
+      return sleep(delayMapChunk).then(() => req.continue())
     }
     req.continue()
   })
@@ -309,6 +370,15 @@ async function leafletGeometry(page) {
       })(),
       tileZ: [...new Set(tiles.map((t) => t.src.match(/\/(\d+)\/\d+\/\d+\.png$/)?.[1]).filter(Boolean))],
       tileCount: tiles.length,
+      // Tiles that actually cover the viewport. The raw count is not comparable
+      // between the two loads: a map created during a transition starts from the
+      // map component's default view and animates to the zones' bounds, so
+      // Leaflet keeps a fuller tile buffer than a map that was born already
+      // fitted. What must match is the view — and the tiles covering it.
+      tilesInView: tiles.filter((t) => {
+        const b = t.getBoundingClientRect()
+        return b.right > 0 && b.bottom > 0 && b.left < innerWidth && b.top < innerHeight
+      }).length,
       tilesLoaded: tiles.filter((t) => t.complete && t.naturalWidth > 0).length,
       tileBox: tiles[0] ? box(tiles[0]) : null,
       tileStyleSize: tiles[0] ? [tiles[0].style.width, tiles[0].style.height] : null,
@@ -443,6 +513,12 @@ function summarise(trace, anims, { toPath }) {
     // (labelled by what the frame contains, so it cannot be confused with the
     // incoming page's own fade-in)
     outgoingLandingFrames: onTarget.filter((s) => s.frames.some((f) => f.is === 'landing' && f.op < 0.98)).length,
+    // The incoming frame, on the new URL, visible while it still holds nothing
+    // but a Suspense fallback: the "fading in blank space" failure. Only counts
+    // what was actually on screen (opacity > 0.02) — an invisible frame holding
+    // an empty fallback is exactly what the gate is supposed to do.
+    blankOnScreen: onTarget.filter((s) =>
+      s.frames.some((f) => f.is === 'empty' && f.op > 0.02)).length,
     maxLeaflets: Math.max(0, ...trace.map((s) => s.leaflets)),
     anims: anims.map((a) => ({ dur: a.dur, is: a.is, keys: a.keys })),
     enterAnim: anims.find((a) => Number(a.keys[a.keys.length - 1]?.op) === 1) ?? null,
@@ -480,11 +556,11 @@ let forward
   await clickLink(page, 'open the map')
 
   // Catch the enter animation mid-flight and hold it there for a screenshot.
-  const frozen = await page.evaluate(() => window.__freezeAt(90)) // 90ms of 300ms
+  const frozen = await page.evaluate(() => window.__freezeAt(120)) // 120ms of 400ms
   await sleep(120)
   if (frozen.frozen) await page.screenshot({ path: `${OUT}02-mid-flight-30pct.png` })
   const late = frozen.frozen
-    ? await page.evaluate(() => window.__freezeAt(210)) // 70% of the way in
+    ? await page.evaluate(() => window.__freezeAt(280)) // 70% of the way in
     : { frozen: false }
   await sleep(120)
   if (late.frozen) await page.screenshot({ path: `${OUT}03-mid-flight-70pct.png` })
@@ -503,9 +579,10 @@ let forward
 
   const enter = forward.enterAnim
   const exit = forward.exitAnim
-  const durationOk = enter && enter.dur >= 250 && enter.dur <= 400
+  const durationOk = enter && enter.dur >= 350 && enter.dur <= 450
+  const exitDurationOk = exit && exit.dur >= 300 && exit.dur <= 400
   const keyframesOk = enter && Number(enter.keys[0]?.op) === 0 && Number(enter.keys[enter.keys.length - 1]?.op) === 1
-  // The scale/rise does NOT go through WAAPI: motion animates opacity on the
+  // The rise does NOT go through WAAPI: motion animates opacity on the
   // compositor and drives the transform from its own frame loop, so
   // getKeyframes() only ever reports `opacity`. The transform is therefore
   // asserted on what actually reached the screen — the computed transform
@@ -514,17 +591,26 @@ let forward
   const nonIdentityTransforms = forward.distinctTransforms.filter((t) => !identity.has(t))
   const exitSeen = Boolean(exit) || forward.outgoingLandingFrames > 0
   const singleMap = forward.maxLeaflets <= 1
-  record('1', 'forward / → /map: fades + transforms in, in budget, never double-mounts',
-    Boolean(durationOk && keyframesOk && nonIdentityTransforms.length > 0 && exitSeen &&
-      singleMap && forward.partialOpacityFrames >= 2 && forward.bothMountedFrames === 0),
+  // The gate: the incoming frame must never be visible while it is still only
+  // holding a Suspense fallback ("empty" = no map inside it yet). If the enter
+  // ever started before the chunk executed, the fade-in would be over blank
+  // space — the failure this pass exists to catch.
+  const blankFramesVisible = forward.blankOnScreen
+  record('1', 'forward / → /map: fades out, fades in, in budget, never over blank space',
+    Boolean(durationOk && exitDurationOk && keyframesOk && nonIdentityTransforms.length > 0 &&
+      exitSeen && singleMap && forward.partialOpacityFrames >= 2 &&
+      forward.bothMountedFrames === 0 && blankFramesVisible === 0),
+    `exit  animation: ${exit ? `${exit.dur}ms on the ${exit.is} frame` : 'NOT FOUND'}\n` +
+    `  opacity keyframes ${JSON.stringify(exit?.keys.map((k) => k.op))} (1 → 0)\n` +
+    `  ${forward.outgoingLandingFrames} sampled frames of the landing page fading out\n` +
     `enter animation: ${enter ? `${enter.dur}ms on the ${enter.is} frame` : 'NOT FOUND'}\n` +
     `  opacity keyframes ${JSON.stringify(enter?.keys.map((k) => k.op))} (0 → 1)\n` +
-    `exit: ${exit ? `${exit.dur}ms WAAPI on the ${exit.is} frame` : ''}${forward.outgoingLandingFrames} sampled frames of the landing page fading out\n` +
     `on-screen partial-opacity frames: ${forward.partialOpacityFrames} · opacity seen ${JSON.stringify(forward.opacityRange)}\n` +
     `computed transforms sampled while arriving (${nonIdentityTransforms.length} non-identity):\n` +
     `  ${nonIdentityTransforms.slice(0, 3).join('\n  ')}\n` +
+    `frames on screen holding an empty (not-yet-mounted) map: ${blankFramesVisible} — must be 0\n` +
     `peak .leaflet-container count: ${forward.maxLeaflets} · frames with both pages mounted: ${forward.bothMountedFrames}\n` +
-    `mid-flight screenshots frozen at 90ms/210ms: ${frozen.frozen}/${late.frozen}`)
+    `mid-flight screenshots frozen at 120ms/280ms of 400ms: ${frozen.frozen}/${late.frozen}`)
   await page.close()
 }
 
@@ -545,7 +631,7 @@ let forward
   cmp('mapPaneTransform', b.mapPaneTransform, a.mapPaneTransform)
   cmp('svgSize', b.svgSize, a.svgSize)
   cmp('tileZ', b.tileZ, a.tileZ)
-  cmp('tileCount', b.tileCount, a.tileCount)
+  cmp('tilesInView', b.tilesInView, a.tilesInView)
   cmp('tileBox', b.tileBox, a.tileBox)
   cmp('tileStyleSize', b.tileStyleSize, a.tileStyleSize)
   cmp('pathCount', b.pathCount, a.pathCount)
@@ -557,7 +643,7 @@ let forward
     diffs.length
       ? diffs.join('\n')
       : `identical once settled: container ${JSON.stringify(b.clientSize)} · zoom ${b.tileZ} · map-pane ${b.mapPaneTransform}\n` +
-        `${b.tileCount} tiles (${b.tilesLoaded} painted), first tile ${JSON.stringify(b.tileBox)} styled ${JSON.stringify(b.tileStyleSize)}\n` +
+        `${b.tilesInView} tiles covering the viewport of ${b.tileCount} in the DOM (${b.tilesLoaded} painted), first tile ${JSON.stringify(b.tileBox)} styled ${JSON.stringify(b.tileStyleSize)}\n` +
         `${b.pathCount} polygons, total area ${b.pathTotalArea}px², per-polygon boxes match\n` +
         `container scale ${JSON.stringify(b.scale)} — must be [1,1] or Leaflet's pointer maths is off`)
 }
@@ -648,12 +734,12 @@ let forward
     JSON.stringify(geo.clientSize) === JSON.stringify(reference.clientSize)
   // Note the threshold here is 1, not the 2 used for the forward case: after
   // goBack the /map chunk is already warm, so the map mounts immediately and
-  // the 300ms enter can be crossed in a single produced frame when the
+  // the 400ms enter can be crossed in a single produced frame when the
   // compositor resumes after a stall. The animation itself is asserted
   // directly from WAAPI, so this is corroboration, not the evidence.
   const backEnter = fwd.enterAnim
   record('4b', 'browser back/forward through the transition, map still sized correctly',
-    Boolean(backEnter) && backEnter.dur >= 250 && backEnter.dur <= 400 &&
+    Boolean(backEnter) && backEnter.dur >= 350 && backEnter.dur <= 450 &&
     Number(backEnter.keys[0]?.op) === 0 && Number(backEnter.keys[backEnter.keys.length - 1]?.op) === 1 &&
     fwd.partialOpacityFrames >= 1 && fwd.bothMountedFrames === 0 && sameAsReference,
     `history back to /map · sampled frames on /map ${fwd.framesOnTarget} · partial-opacity ${fwd.partialOpacityFrames} · both-mounted ${fwd.bothMountedFrames}\n` +
@@ -663,7 +749,7 @@ let forward
 }
 
 // ===========================================================================
-// 5 · /admin through the same shared frame
+// 5 · /admin is outside the dissolve — an instant swap, in both directions
 // ===========================================================================
 {
   const page = await newPage()
@@ -688,12 +774,56 @@ let forward
     transform: getComputedStyle(document.querySelector('[data-route-frame]')).transform,
   }))
   await page.screenshot({ path: `${OUT}06-admin.png` })
-  record('5', '/admin still transitions through the shared frame, unduplicated',
-    admin.partialOpacityFrames >= 2 && admin.bothMountedFrames === 0 &&
-    controls.passcode === 1 && controls.unlock === 1 && Number(controls.opacity) === 1,
-    `enter: ${admin.enterAnim ? `${admin.enterAnim.dur}ms` : 'none'} · partial-opacity frames ${admin.partialOpacityFrames} · both-mounted ${admin.bothMountedFrames}\n` +
+
+  // And leaving admin must be a cut too: the pair decides, not the route, so a
+  // slow fade out of /admin would be just as wrong as a fade in. The locked
+  // gate's only link goes to `/` — its label says "Public map" but its target is
+  // the landing page (a pre-existing mismatch in AdminGate.tsx, and not this
+  // pass's business) — so this walks the route the app itself offers: admin →
+  // landing, then the landing page's own CTA to the map.
+  await page.evaluate(() => window.__resetTrace())
+  const seqOut = await page.evaluate(() => window.__currentSeq())
+  await clickLink(page, 'public map')
+  await settleFrame(page, { toPath: '/', afterSeq: seqOut })
+  await sleep(400)
+  await page.evaluate(() => window.__stopTrace())
+  const outOfAdmin = summarise(
+    await page.evaluate(() => window.__trace.slice()),
+    await page.evaluate(() => window.__anims.slice()),
+    { toPath: '/' },
+  )
+  const landingCta = await page.evaluate(() =>
+    Boolean([...document.querySelectorAll('a')].find((a) => /open the map/i.test(a.textContent ?? ''))))
+
+  // …and the map still dissolves properly on the next navigation.
+  await page.evaluate(() => window.__resetTrace())
+  const seqMap = await page.evaluate(() => window.__currentSeq())
+  await clickLink(page, 'open the map')
+  const mapMounted = await waitFor(page, '.leaflet-container')
+  await settleFrame(page, { toPath: '/map', afterSeq: seqMap })
+  await sleep(400)
+  await page.evaluate(() => window.__stopTrace())
+  const toMap = summarise(
+    await page.evaluate(() => window.__trace.slice()),
+    await page.evaluate(() => window.__anims.slice()),
+    { toPath: '/map' },
+  )
+  const mapEnter = toMap.enterAnim
+
+  record('5', '/admin swaps instantly in and out, and / → /map still dissolves after it',
+    admin.partialOpacityFrames === 0 && admin.anims.length === 0 &&
+    outOfAdmin.partialOpacityFrames === 0 && outOfAdmin.anims.length === 0 &&
+    admin.bothMountedFrames === 0 && outOfAdmin.bothMountedFrames === 0 &&
+    controls.passcode === 1 && controls.unlock === 1 && Number(controls.opacity) === 1 &&
+    landingCta && mapMounted &&
+    Boolean(mapEnter) && mapEnter.dur >= 350 && mapEnter.dur <= 450 &&
+    Number(mapEnter.keys[0]?.op) === 0 && Number(mapEnter.keys[mapEnter.keys.length - 1]?.op) === 1 &&
+    toMap.partialOpacityFrames >= 2 && toMap.bothMountedFrames === 0,
+    `into /admin: partial-opacity frames ${admin.partialOpacityFrames} (must be 0) · animations on the frame ${admin.anims.length} (must be 0)\n` +
+    `admin → /:   partial-opacity frames ${outOfAdmin.partialOpacityFrames} (must be 0) · animations on the frame ${outOfAdmin.anims.length} (must be 0)\n` +
+    `  landed on the real landing page (CTA present): ${landingCta}\n` +
+    `then / → /map (the control case): enter ${mapEnter ? `${mapEnter.dur}ms, opacity ${JSON.stringify(mapEnter.keys.map((k) => k.op))}` : 'NOT FOUND'} · partial-opacity frames ${toMap.partialOpacityFrames} · both-mounted ${toMap.bothMountedFrames} · map mounted: ${mapMounted}\n` +
     `passcode fields ${controls.passcode} (expect 1) · Unlock buttons ${controls.unlock} (expect 1) — the duplicate-controls regression the pinned \`location\` guards\n` +
-    `settled frame: path=${adminFrame?.path} frames=${adminFrame?.count} ${JSON.stringify(adminFrame?.frame)}\n` +
     `at rest, re-read: opacity ${controls.opacity}, transform ${controls.transform}`)
   await page.close()
 }
@@ -873,6 +1003,144 @@ if (SLOW_BASE) {
 } else {
   record('9', 'MapLoadingOverlay on top of the transitioned-in map', null,
     'skipped — the demo backend answers synchronously, so the overlay never shows.\nPass --slow=http://localhost:4174 to run it against a build whose zone feed is delayed.')
+}
+
+// ===========================================================================
+// 10 · the load gate, with the /map chunk held on the wire
+//
+// The whole point of the gate is the slow case, and the fast case cannot show
+// it: when the chunk is warm the hold is a microtask long. So delay the chunk by
+// ~1.4s and watch what the incoming frame does while it is in flight. It must be
+// mounted, invisible, and showing nothing at all — then fade in over a rendered
+// map once the chunk lands. Anything visible in that window (a spinner, a brand
+// mark, a half-faded fallback) fails.
+//
+// Measured from the in-page rAF trace rather than by polling over the protocol:
+// while an intercepted request is being held open, CDP round trips are delayed
+// too, so `page.evaluate` samples land seconds late and describe the wrong
+// moment.
+// ===========================================================================
+let gate
+{
+  const page = await newPage({ delayMapChunk: 1400 })
+  const chunkRequests = []
+  page.on('request', (r) => {
+    if (/MapPage-.*\.js/.test(r.url())) chunkRequests.push(r.url().split('/').pop())
+  })
+  await page.goto(BASE, { waitUntil: 'networkidle2' })
+  await sleep(2500)
+  await page.evaluate(() => window.__resetTrace())
+  const seqBefore = await page.evaluate(() => window.__currentSeq())
+  await clickLink(page, 'open the map')
+  // The chunk is on the wire for 1.4s; nothing to do but let it arrive.
+  const mapped = await waitFor(page, '.leaflet-container', { timeout: 30000 })
+  await settleFrame(page, { toPath: '/map', afterSeq: seqBefore })
+  await sleep(300)
+  await page.evaluate(() => window.__stopTrace())
+  const trace = await page.evaluate(() => window.__trace.slice())
+  const anims = await page.evaluate(() => window.__anims.slice())
+  await page.screenshot({ path: `${OUT}10-gated-cold-load.png` })
+
+  // The window that matters is everything between the URL changing and the map
+  // existing — however React got there. Two things keep it dark: react-router
+  // navigates inside a transition, so React holds the previous screen instead of
+  // committing a fallback, and the route gate holds the incoming frame at
+  // opacity 0 if it does mount. What must never happen is a *visible* frame with
+  // no map in it yet.
+  // `leaflets` (the count in the page) is what says whether the map exists yet;
+  // there is no per-sample `map` field in the trace.
+  const beforeMap = trace.filter((s) => s.path === '/map' && s.leaflets === 0)
+  const waitMs = beforeMap.length ? beforeMap[beforeMap.length - 1].t - beforeMap[0].t : 0
+  // Only the page being left may ever be visible in this window (it is the first
+  // half of the dissolve, doing exactly what it should).
+  const visibleWhileWaiting = beforeMap.filter((s) => s.frames.some((f) => f.op > 0.02))
+  const onlyOutgoingVisible = visibleWhileWaiting.every((s) =>
+    s.frames.every((f) => f.op <= 0.02 || f.is === 'landing'))
+  const visibleBlank = beforeMap.filter((s) =>
+    s.frames.some((f) => f.is !== 'map' && f.is !== 'landing' && f.op > 0.02)).length
+  const fallbackWhileWaiting = [...new Set(beforeMap.map((s) => JSON.stringify(s.fallback)))]
+  const overlayWhileWaiting = [...new Set(beforeMap.map((s) => s.busyOverlay))]
+  // Nothing may fade *in* before the map exists. The outgoing page's own exit
+  // animation (its last keyframe is 0) is the transition working, not this.
+  const enterAnimsWhileWaiting = beforeMap.length
+    ? anims.filter((a) => a.at >= beforeMap[0].t && a.at <= beforeMap[beforeMap.length - 1].t)
+        .filter((a) => a.is !== 'map' && Number(a.keys[a.keys.length - 1]?.op) === 1).length
+    : -1
+
+  const entered = summarise(trace, anims, { toPath: '/map' })
+  const geo = await settleMap(page)
+  const atRest = await page.evaluate(() => {
+    const frame = [...document.querySelectorAll('[data-route-frame]')].pop()
+    return { opacity: getComputedStyle(frame).opacity, transform: getComputedStyle(frame).transform }
+  })
+  const enter = entered.enterAnim
+  gate = { beforeMap, waitMs, entered }
+
+  record('10', 'delayed /map chunk: dark until the chunk lands, then a full fade-in',
+    chunkRequests.length > 0 && mapped && waitMs >= 1000 &&
+    onlyOutgoingVisible && visibleBlank === 0 && enterAnimsWhileWaiting === 0 &&
+    overlayWhileWaiting.length === 1 && overlayWhileWaiting[0] === false &&
+    beforeMap.every((s) => s.fallback === null || (s.fallback.op === 0 && s.fallback.html === 0)) &&
+    entered.blankOnScreen === 0 &&
+    Boolean(enter) && enter.dur >= 350 && enter.dur <= 450 &&
+    Number(enter.keys[0]?.op) === 0 && Number(enter.keys[enter.keys.length - 1]?.op) === 1 &&
+    Number(atRest.opacity) === 1 && atRest.transform === 'none' &&
+    geo.pathTotalArea === reference.pathTotalArea,
+    `MapPage chunk delayed 1400ms on the wire · requests: ${JSON.stringify(chunkRequests)}\n` +
+    `map mounted after the delay: ${mapped}\n` +
+    `waited ${Math.round(waitMs)}ms over ${beforeMap.length} sampled frames with the URL on /map and no map yet:\n` +
+    `  samples with something visible on screen: ${visibleWhileWaiting.length} — all of them the outgoing page: ${onlyOutgoingVisible}\n` +
+    `  frames visible with no map in them: ${visibleBlank} (must be 0 — this is the fade over blank space)\n` +
+    `  fade-*in* animations started before the map existed: ${enterAnimsWhileWaiting} (must be 0)\n` +
+    `  Suspense fallback as sampled: ${fallbackWhileWaiting.join(' / ')} (opacity 0, 0 chars of content)\n` +
+    `  aria-busy overlay present while waiting: ${JSON.stringify(overlayWhileWaiting)}\n` +
+    `  frames on screen with a visible empty map: ${entered.blankOnScreen} (must be 0)\n` +
+    `once landed: enter ${enter ? `${enter.dur}ms, opacity ${JSON.stringify(enter.keys.map((k) => k.op))}` : 'NOT FOUND'}\n` +
+    `at rest: opacity ${atRest.opacity}, transform ${atRest.transform} · polygons ${geo.pathTotalArea}px² (reference ${reference.pathTotalArea}px²)`)
+  await page.close()
+}
+
+// ===========================================================================
+// 11 · no white anywhere in the handover — measured, not assumed
+// ===========================================================================
+{
+  const page = await newPage()
+  await page.goto(BASE, { waitUntil: 'networkidle2' })
+  await sleep(2500)
+  const backgrounds = await page.evaluate(() => ({
+    html: getComputedStyle(document.documentElement).backgroundColor,
+    body: getComputedStyle(document.body).backgroundColor,
+  }))
+  const seqBefore = await page.evaluate(() => window.__currentSeq())
+  await clickLink(page, 'open the map')
+  // Freeze the exit at 95% — the moment the transition is at its darkest — and
+  // photograph what the screen actually contains there.
+  const frozen = await page.evaluate(() => window.__freezeAt(0.99, 'exit')) // 99% of the exit
+  await sleep(150)
+  const darkPath = `${OUT}11-dark-window.png`
+  if (frozen.frozen) await page.screenshot({ path: darkPath })
+  const dark = frozen.frozen ? luminanceOf(darkPath) : null
+  await page.evaluate(() => window.__unfreeze())
+  await settleFrame(page, { toPath: '/map', afterSeq: seqBefore })
+  const settled = await page.evaluate(() => ({
+    html: getComputedStyle(document.documentElement).backgroundColor,
+    body: getComputedStyle(document.body).backgroundColor,
+  }))
+  await page.screenshot({ path: `${OUT}12-map-settled-after.png` })
+
+  const ink = 'rgb(10, 10, 10)'
+  record('11', 'the handover is dark at every step: ink backgrounds, black pixels',
+    backgrounds.html === ink && backgrounds.body === ink && settled.html === ink &&
+    settled.body === ink && Boolean(dark) && dark.max < 40,
+    `html/body background before: ${backgrounds.html} / ${backgrounds.body}\n` +
+    `html/body background after:  ${settled.html} / ${settled.body}   (expect ${ink} — the ` +
+    `canvas may not go white at any point, including a cold load; index.html sets it inline too)\n` +
+    (dark
+      ? `mid-transition frame frozen at ${frozen.at}ms of the ${frozen.dur}ms exit (99%, the darkest moment):\n` +
+        `  ${darkPath.split('/').pop()} ${dark.width}×${dark.height} · mean luminance ${dark.mean}/255 · brightest pixel ${dark.max}/255\n` +
+        `  a white flash would put that maximum at ~255; the assertion is < 40`
+      : 'could not freeze the exit for the dark frame'))
+  await page.close()
 }
 
 // ===========================================================================

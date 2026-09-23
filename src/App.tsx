@@ -1,6 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route } from 'react-router-dom'
-import { BrandMark } from './components/LoadingState'
 import { RouteTransition } from './motion/RouteTransition'
 import { Admin } from './pages/Admin'
 import { Landing } from './pages/Landing'
@@ -40,15 +39,37 @@ const MapPage = lazy(() =>
   prefetchMapPage().then((module) => ({ default: module.MapPage })),
 )
 
-function MapLoadingFallback() {
+/**
+ * Which promise makes each lazy route renderable, keyed by pathname.
+ *
+ * `RouteTransition` holds an incoming route at opacity 0 until the promise for
+ * it resolves, so the enter animation covers a *rendered* page instead of a
+ * Suspense fallback. Only `/map` has one — everything else is eager. See the
+ * header of `src/motion/RouteTransition.tsx`.
+ */
+const ROUTE_PREPARATION = { '/map': prefetchMapPage }
+
+export function MapLoadingFallback() {
+  /*
+    Transparent, and deliberately empty.
+
+    This fallback is shown in exactly one situation: `/map` is being entered and
+    its chunk is not in memory yet. The route frame is already on screen by then,
+    held at opacity 0 (see `RouteTransition`), so this window is *dark* — and dark
+    is the right answer. A brand mark or a spinner appearing out of a dissolve
+    and then handing over to the map is the one thing that makes a route
+    transition look like a prototype, so there is nothing here to see.
+
+    It keeps its box (`min-h-dvh`, on the ink ground) so the document does not
+    collapse while the chunk loads, and keeps its `role`/label so assistive tech
+    still hears that the map is loading.
+  */
   return (
     <div
       role="status"
       aria-label="Loading map"
-      className="grid min-h-dvh place-items-center bg-ink"
-    >
-      <BrandMark className="h-12 w-12 text-accent" />
-    </div>
+      className="min-h-dvh bg-ink opacity-0"
+    />
   )
 }
 
@@ -64,7 +85,7 @@ export default function App() {
         `RouteTransition` renders the <Routes> itself, so it can pin the
         outgoing tree to the outgoing location while it fades out.
       */}
-      <RouteTransition>
+      <RouteTransition prepare={ROUTE_PREPARATION}>
         <Route path="/" element={<Landing />} />
         <Route
           path="/map"

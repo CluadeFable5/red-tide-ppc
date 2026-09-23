@@ -1,5 +1,12 @@
 <!doctype html>
-<html lang="en">
+<!--
+  The ink ground is set here as well as in index.css (where it is the `body`
+  colour) so there is no window — on a cold load before the stylesheet arrives —
+  in which the browser can paint its default white. The route dissolve depends on
+  this: the moment between two pages is supposed to be dark, and this is the one
+  background that exists before any CSS does.
+-->
+<html lang="en" style="background-color: #0a0a0a">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
