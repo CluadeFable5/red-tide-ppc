@@ -563,6 +563,11 @@ with the bottom sheet, and the checklist is now spread over three files:
 - **`scripts/map-motion-pass.mjs`** (real Chromium, production build) — item 3: the
   `zone-path` fill ramp, computed mid-ramp and at rest, plus the selection
   stroke/dim steps.
+- **`scripts/live-data-map-pass.mjs`** (real Chromium, production build) — item 6:
+  the report → approve E2E through a real popup, report form and admin approve,
+  plus the live-region ARIA contract, at four widths × reduced motion on and off.
+  Its bottom-sheet anchor walk was replaced by the drawer's grab tab and zone list
+  on 2026-09-24; the popup/report/admin path is otherwise unchanged.
 - **`src/pages/mapPass.test.tsx`** — the DOM/behaviour half of all six items, in
   **jsdom**, in CI. It proves what a DOM without a layout engine can prove: the
   drawer header strip's content (the sheet's peek row is gone), the tab/state-dot
@@ -570,22 +575,20 @@ with the bottom sheet, and the checklist is now spread over three files:
   placement, and the full loop through the demo backend. So the checklist has
   executable coverage even in a sandbox with no browser at all.
 
-Two of the six items have **no working browser-side check**. Item 1 (peek row)
-retired with the bottom sheet and is jsdom-only. Item 6 (report → approve E2E) is
-carried by `src/pages/mapPass.test.tsx` and by the whole loop in
-`src/App.test.tsx`; `scripts/live-data-map-pass.mjs` still contains a browser
-version, but it is stale — it walks the retired bottom-sheet anchors and blocks on
-a `[data-anchor]` attribute nothing in `src/` sets any more, so it times out before
-reaching the report steps. Admin actions keep a live pass in
-`scripts/admin-responsive-pass.mjs`.
+One of the six items has **no browser-side check**: item 1 (peek row) retired with
+the bottom sheet and is jsdom-only. Item 6's browser half is
+`scripts/live-data-map-pass.mjs` above — it needed a repair rather than a rewrite,
+because only the drawer interaction had gone stale; the same loop is also carried
+in jsdom by `src/pages/mapPass.test.tsx` and `src/App.test.tsx`. Admin actions keep
+a live pass in `scripts/admin-responsive-pass.mjs`.
 
 The flick-velocity projection itself is pure logic in
 `src/motion/sidePanelAnchors.test.ts` (§13).
 
-**Honest limitation:** the two surviving browser halves run Chromium only, and
-neither runs in CI. The halves agree on *what* to check, but a sandbox without a
-real browser can only run the jsdom half — the geometry/motion assertions then ride
-on the last real-browser run, not on CI.
+**Honest limitation:** the browser passes run Chromium only, and none of them runs
+in CI. The halves agree on *what* to check, but a sandbox without a real browser can
+only run the jsdom half — the geometry/motion assertions then ride on the last
+real-browser run, not on CI.
 
 ---
 
