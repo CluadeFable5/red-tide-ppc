@@ -1,5 +1,5 @@
-import { useRef } from 'react'
-import { motion, motionValue, useReducedMotion, useTransform } from 'motion/react'
+import { useEffect, useRef } from 'react'
+import { animate, motion, motionValue, useReducedMotion, useTransform } from 'motion/react'
 import type { MotionValue } from 'motion/react'
 import { ZONE_STATUS_ORDER } from '../lib/status'
 import { APP_SPRING } from '../motion/mapMotion'
@@ -150,9 +150,47 @@ function StatusChip({
       <span className="font-display text-[11px] leading-none tracking-[0.03em] text-paper/85">
         {label}
       </span>
-      <span className="font-mono text-[10px] leading-none" style={{ color: theme.hex }}>
-        <CountUp to={count} duration={0.9} />
-      </span>
+      <StatusCount count={count} color={theme.hex} />
+    </span>
+  )
+}
+
+/**
+ * The pip already pulses on a count change; this gives the digit itself a
+ * short acknowledgement too, so the data that changed is the thing that
+ * briefly expands. It is intentionally one-shot and transform-only (plus a
+ * tiny text shadow) rather than a loop.
+ */
+function StatusCount({ count, color }: { count: number; color: string }) {
+  const reduceMotion = useReducedMotion()
+  const ref = useRef<HTMLSpanElement>(null)
+  const previous = useRef(count)
+
+  useEffect(() => {
+    if (previous.current === count) return
+    previous.current = count
+    if (reduceMotion) return
+
+    const node = ref.current
+    if (!node) return
+    const controls = animate(
+      node,
+      {
+        scale: [1, 1.16, 1],
+        textShadow: ['0 0 0 transparent', `0 0 10px ${color}`, '0 0 0 transparent'],
+      },
+      { duration: 0.32, ease: 'easeOut' },
+    )
+    return () => controls.stop()
+  }, [count, color, reduceMotion])
+
+  return (
+    <span
+      ref={ref}
+      className="inline-block origin-center font-mono text-[10px] leading-none"
+      style={{ color }}
+    >
+      <CountUp to={count} duration={0.9} />
     </span>
   )
 }
