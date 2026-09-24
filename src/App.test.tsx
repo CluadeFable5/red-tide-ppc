@@ -131,7 +131,7 @@ describe('map page (/map)', () => {
     }
 
     // All zones start safe, so the "no advisories" panel is shown.
-    expect(screen.getByText('No advisories recorded right now')).toBeTruthy()
+    expect(screen.getByText('No advisories')).toBeTruthy()
   })
 
   it('rejects a report that is too short', async () => {
@@ -141,7 +141,7 @@ describe('map page (/map)', () => {
 
     await user.click(
       within(zoneCard(ZONE)).getByRole('button', {
-        name: /Report something here/i,
+        name: /Report here/i,
       }),
     )
 
@@ -164,7 +164,7 @@ describe('the full report → approve loop', () => {
     // --- 1. public user files a report -------------------------------
     await user.click(
       within(zoneCard(ZONE)).getByRole('button', {
-        name: /Report something here/i,
+        name: /Report here/i,
       }),
     )
 
@@ -251,7 +251,7 @@ describe('photo attachment', () => {
 
     await user.click(
       within(zoneCard(ZONE)).getByRole('button', {
-        name: /Report something here/i,
+        name: /Report here/i,
       }),
     )
 

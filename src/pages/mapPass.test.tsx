@@ -231,7 +231,7 @@ describe('six-item pass on /map (jsdom side)', () => {
     // Public user reports — from the zone drawer's card.
     await user.click(
       within(zoneCard(ZONE)).getByRole('button', {
-        name: /Report something here/i,
+        name: /Report here/i,
       }),
     )
     const dialog = await screen.findByRole('dialog')

@@ -181,6 +181,18 @@
     stroke 400ms var(--ease-out-quint);
 }
 
+/* Shipping layer fade — secondary chart furniture, must not snap.
+   Uses same compositor-friendly opacity properties as zones, so JS-driven
+   opacity changes (0→1 over 200ms, 1→0 over 150ms) are interpolated smoothly.
+   Reduced motion disables via the global rule + explicit none below. */
+.leaflet-overlay-pane path.shipping-path,
+.leaflet-overlay-pane circle.shipping-path {
+  transition:
+    stroke-opacity 200ms var(--ease-out-quint),
+    fill-opacity 200ms var(--ease-out-quint),
+    opacity 200ms var(--ease-out-quint);
+}
+
 /* --- 4. Selection: dim the rest ------------------------------------------
    The selected polygon's stroke thickening already comes from pathOptions
    (`weightSelected`). Everyone else drops to 60% via ELEMENT opacity — a
@@ -244,6 +256,11 @@ body.map-motion-paused .animate-tide-scan {
   /* Status crossfades, selection dim and tile fades become instant state
      changes. */
   .leaflet-overlay-pane path.zone-path {
+    transition: none;
+  }
+
+  .leaflet-overlay-pane path.shipping-path,
+  .leaflet-overlay-pane circle.shipping-path {
     transition: none;
   }
 
