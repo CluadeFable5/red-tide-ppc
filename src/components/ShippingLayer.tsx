@@ -54,9 +54,16 @@ function FeatureTip({ feature }: { feature: ShippingFeature }) {
   )
 }
 
-function ShippingLine({ feature }: { feature: ShippingFeature }) {
+function ShippingLine({
+  feature,
+  opacity = 1,
+}: {
+  feature: ShippingFeature
+  opacity?: number
+}) {
   const isArea = feature.kind !== 'lane-boundary'
   const positions = isArea ? [...feature.points, feature.points[0]] : feature.points
+  const o = Math.max(0, Math.min(1, opacity))
   return (
     <>
       {/* white casing so the blue stays legible over any basemap colour */}
@@ -65,10 +72,11 @@ function ShippingLine({ feature }: { feature: ShippingFeature }) {
         pathOptions={{
           color: CASING,
           weight: 6.5,
-          opacity: 0.85,
+          opacity: 0.85 * o,
           lineCap: 'butt',
           fill: false,
           interactive: false,
+          className: 'shipping-path',
         }}
       />
       <Polyline
@@ -76,10 +84,11 @@ function ShippingLine({ feature }: { feature: ShippingFeature }) {
         pathOptions={{
           color: BLUE,
           weight: 3,
-          opacity: 0.95,
+          opacity: 0.95 * o,
           dashArray: lineDash(feature.kind),
           lineCap: 'butt',
           fill: false,
+          className: 'shipping-path',
         }}
       >
         <Tooltip direction="top" offset={[0, -6]} sticky>
@@ -90,7 +99,14 @@ function ShippingLine({ feature }: { feature: ShippingFeature }) {
   )
 }
 
-function ShippingHazard({ feature }: { feature: ShippingFeature }) {
+function ShippingHazard({
+  feature,
+  opacity = 1,
+}: {
+  feature: ShippingFeature
+  opacity?: number
+}) {
+  const o = Math.max(0, Math.min(1, opacity))
   return (
     <CircleMarker
       center={feature.points[0]}
@@ -99,7 +115,9 @@ function ShippingHazard({ feature }: { feature: ShippingFeature }) {
         color: CASING,
         weight: 1.5,
         fillColor: BLUE,
-        fillOpacity: 0.9,
+        fillOpacity: 0.9 * o,
+        opacity: 0.9 * o,
+        className: 'shipping-path',
       }}
     >
       <Tooltip direction="top" offset={[0, -6]}>
@@ -113,15 +131,21 @@ function ShippingHazard({ feature }: { feature: ShippingFeature }) {
  * The whole PPTSS overlay. Mounted inside `<MapContainer>` only while the
  * user's shipping toggle is on (default off — this is a secondary safety
  * reference next to the red-tide advisory zones, not a co-equal layer).
+ *
+ * MOTION:
+ * - Accepts `opacity` prop (0→1) that is multiplied onto every path's
+ *   stroke/fill opacity. Parent (MapPage) animates this value 0→1 over 200ms
+ *   on mount and 1→0 over 150ms before unmount, so the layer fades rather
+ *   than snapping. Reduced motion skips the fade.
  */
-export function ShippingLayer() {
+export function ShippingLayer({ opacity = 1 }: { opacity?: number }) {
   return (
     <>
       {SHIPPING_FEATURES.map((feature) =>
         feature.kind === 'hazard' ? (
-          <ShippingHazard key={feature.id} feature={feature} />
+          <ShippingHazard key={feature.id} feature={feature} opacity={opacity} />
         ) : (
-          <ShippingLine key={feature.id} feature={feature} />
+          <ShippingLine key={feature.id} feature={feature} opacity={opacity} />
         ),
       )}
       {/* Screen-reader summary: the map geometry itself is not announced. */}

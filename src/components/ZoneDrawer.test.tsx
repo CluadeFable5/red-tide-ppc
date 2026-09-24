@@ -322,9 +322,9 @@ describe('ZoneDrawer content parity with the sheet', () => {
     expect(
       within(drawer()).getByRole('heading', { name: 'Puerto Princesa Bay (City Proper)' }),
     ).toBeTruthy()
-    expect(within(drawer()).getByText('No advisories recorded right now')).toBeTruthy()
+    expect(within(drawer()).getByText('No advisories')).toBeTruthy()
     expect(
-      within(drawer()).getByRole('button', { name: /Report something here/i }),
+      within(drawer()).getByRole('button', { name: /Report here/i }),
     ).toBeTruthy()
   })
 

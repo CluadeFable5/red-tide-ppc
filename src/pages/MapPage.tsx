@@ -1,8 +1,8 @@
 import { LiveDataStatus } from '../components/LiveDataStatus'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Map as LeafletMap } from 'leaflet'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, animate, motion, useReducedMotion } from 'motion/react'
 import { RegistrationMarks, Scanline } from '../components/Ambient'
 import { AdvisoryDrawer } from '../components/AdvisoryDrawer'
 import { DemoBanner } from '../components/DemoBanner'
@@ -105,6 +105,14 @@ export function MapPage() {
   // safety reference that must not compete with the advisory zones. Local UI
   // state on purpose: not app data, nothing to persist or sync.
   const [shippingLanesVisible, setShippingLanesVisible] = useState(false)
+  // Mounted flag keeps the layer in the tree during fade-out, so it can
+  // animate 1→0 before unmounting (150ms). Opacity is multiplied onto every
+  // Leaflet path's stroke/fill opacity.
+  const [shippingMounted, setShippingMounted] = useState(false)
+  const [shippingOpacity, setShippingOpacity] = useState(0)
+  const shippingFadeRef = useRef<ReturnType<typeof animate> | null>(null)
+  const shippingTimeoutRef = useRef<number | null>(null)
+
   // One-time discoverability hint for the overlay toggle: the ship glyph is
   // icon-only, and "PCG shipping lane" is not guessable from an icon. Shown
   // once (localStorage-gated), auto-dismisses, and toggling the layer
@@ -122,6 +130,61 @@ export function MapPage() {
     return () => window.clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shippingHintOpen])
+
+  // Fade logic: ON = mount + 0→1 over 200ms, OFF = 1→0 over 150ms then unmount.
+  // Reduced motion skips the fade entirely.
+  useEffect(() => {
+    // Clear any pending unmount timeout
+    if (shippingTimeoutRef.current !== null) {
+      window.clearTimeout(shippingTimeoutRef.current)
+      shippingTimeoutRef.current = null
+    }
+    shippingFadeRef.current?.stop()
+
+    if (shippingLanesVisible) {
+      setShippingMounted(true)
+      if (reduceMotion) {
+        setShippingOpacity(1)
+      } else {
+        setShippingOpacity(0)
+        // Start from 0 so CSS/Leaflet sees the change; next frame animate to 1
+        const controls = animate(0, 1, {
+          duration: 0.2,
+          ease: 'easeOut',
+          onUpdate: (v) => setShippingOpacity(v),
+        })
+        shippingFadeRef.current = controls
+      }
+    } else {
+      if (!shippingMounted) return
+      if (reduceMotion) {
+        setShippingMounted(false)
+        setShippingOpacity(0)
+      } else {
+        const controls = animate(shippingOpacity, 0, {
+          duration: 0.15,
+          ease: 'easeIn',
+          onUpdate: (v) => setShippingOpacity(v),
+        })
+        shippingFadeRef.current = controls
+        shippingTimeoutRef.current = window.setTimeout(() => {
+          setShippingMounted(false)
+          shippingTimeoutRef.current = null
+        }, 160)
+      }
+    }
+
+    return () => {
+      shippingFadeRef.current?.stop()
+      if (shippingTimeoutRef.current !== null) {
+        window.clearTimeout(shippingTimeoutRef.current)
+        shippingTimeoutRef.current = null
+      }
+    }
+    // shippingMounted and shippingOpacity are read to decide whether to animate out,
+    // but we only want to react to intent (shippingLanesVisible) and reducedMotion.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shippingLanesVisible, reduceMotion])
 
   function dismissShippingHint() {
     setShippingHintOpen(false)
@@ -211,9 +274,10 @@ export function MapPage() {
           resetToken={resetToken}
           focusZoneId={selectedZoneId}
           focusToken={focusToken}
-          shippingLanesVisible={shippingLanesVisible}
+          shippingLanesVisible={shippingMounted}
+          shippingOpacity={shippingOpacity}
           reports={reports}
-        focusReserveRight={focusReserveRight}
+          focusReserveRight={focusReserveRight}
           onMapReady={setLeafletMap}
           onSelectZone={selectZone}
           onReport={openReportForm}

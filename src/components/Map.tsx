@@ -34,6 +34,8 @@ export interface MapProps {
    * default: it is a secondary safety reference, not the app's purpose.
    */
   shippingLanesVisible?: boolean
+  /** Opacity 0→1 for fade-in/out, driven by MapPage. */
+  shippingOpacity?: number
   /**
    * Right-edge reservation (px) the focus flight must keep clear — the open
    * zone drawer on desktop. MapPage owns the drawer state and passes the
@@ -846,6 +848,7 @@ export function Map({
   focusZoneId,
   focusToken,
   shippingLanesVisible = false,
+  shippingOpacity = 1,
   focusReserveRight = 0,
   onMapReady,
   onSelectZone,
@@ -906,8 +909,8 @@ export function Map({
       <UserLocationDot />
 
       {/* Navigation-hazard lines sit UNDER the advisory polygons: secondary
-          reference, never competing with the status colours. */}
-      {shippingLanesVisible && <ShippingLayer />}
+          reference, never competing with the status colours. Fades via opacity prop. */}
+      {shippingLanesVisible && <ShippingLayer opacity={shippingOpacity} />}
 
       {/* Zone boundary casings live one step below the overlay pane (400). */}
       <Pane name={ZONE_CASING_PANE} style={{ zIndex: 399 }} />

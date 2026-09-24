@@ -102,8 +102,7 @@ export const SEED_ZONES: SeedZone[] = [
   {
     id: 'pp-bay',
     name: 'Puerto Princesa Bay (City Proper)',
-    description:
-      'The city bay west of the poblacion — Bancao-Bancao, the port side and the San Jose shore, around the northern inlet apex and down its opposite bank. Where most city market shellfish is landed.',
+    description: 'City bay by the port — most market shellfish comes from here.',
     /**
      * 270 vertices (202 landward / 68 seaward), 400 m coastal buffer. Landward
      * edge traces the real OSM coastline from Bancao-Bancao lighthouse
@@ -393,8 +392,7 @@ export const SEED_ZONES: SeedZone[] = [
   {
     id: 'sta-lourdes',
     name: 'Sta. Lourdes Coastal Waters',
-    description:
-      'The shallow waters between the city and Honda Bay, off Sta. Lourdes and Manggahan — the route the bancas take out to the islands.',
+    description: 'Shallow waters off Sta. Lourdes, banca route to Honda Bay.',
     /**
      * 124 vertices (77 landward / 47 seaward), 350 m coastal band. Landward
      * edge traces the real OSM coastline north from Blue Palawan shore through
@@ -534,8 +532,7 @@ export const SEED_ZONES: SeedZone[] = [
   {
     id: 'honda-inner',
     name: 'Honda Bay — Inner Islands',
-    description:
-      'Inner Honda Bay along the mainland shore north of the Sta. Lourdes wharf — the shallow reef flat the bancas cross to Cowrie, Luli and Snake Island, and the closest gleaning water to the city.',
+    description: 'Shallow reef north of Sta. Lourdes, banca route to Cowrie and Luli.',
     /**
      * 67 vertices (45 landward / 22 seaward), 350 m coastal band. Landward
      * edge traces the real OSM coastline of the west Honda Bay shore from the
@@ -617,8 +614,7 @@ export const SEED_ZONES: SeedZone[] = [
   {
     id: 'honda-outer',
     name: 'Honda Bay — Outer Islands',
-    description:
-      'Outer Honda Bay: the mangrove shore and tidal channel north of the inner bay, where the water narrows toward the bay mouth before opening onto the Sulu Sea past Pandan and Starfish Island.',
+    description: 'Outer bay channel toward the Sulu Sea, past Pandan and Starfish Island.',
     /**
      * 63 vertices (43 landward / 20 seaward), 350 m coastal band. Landward
      * edge traces the real OSM coastline of the mainland mangrove shore from
@@ -696,8 +692,7 @@ export const SEED_ZONES: SeedZone[] = [
   {
     id: 'binuatan',
     name: 'Binuatan (Northeast Coast)',
-    description:
-      'Northeast coast past the Honda Bay mouth — the mangrove-lined shore off Marayugon toward Babuyan, and its small-scale gleaning grounds.',
+    description: 'Mangrove coast past Honda Bay mouth, near Marayugon.',
     /**
      * 95 vertices (60 landward / 35 seaward), 400 m coastal band along the
      * northeast coast (~12.5 km of coast). Landward edge traces the real OSM
@@ -807,8 +802,7 @@ export const SEED_ZONES: SeedZone[] = [
   {
     id: 'sabang',
     name: 'Sabang — St. Paul Bay (North Coast)',
-    description:
-      'The north coast at Sabang, by the Underground River. Tourist boats and local gleaning share these waters.',
+    description: 'Sabang coast near the Underground River.',
     /**
      * 161 vertices (117 landward / 44 seaward), 350 m coastal band along
      * St. Paul Bay. Landward edge traces the real OSM coastline from west of
@@ -984,8 +978,7 @@ export const SEED_ZONES: SeedZone[] = [
   {
     id: 'irawan',
     name: 'Irawan Coastal Waters',
-    description:
-      'The far shore of the bay mouth west of the city — the Irawan river-mouth estuary and the straight shore south toward Iwahig, facing the city waterfront across open water.',
+    description: 'Irawan river-mouth estuary, across the bay from the city.',
     /**
      * 64 vertices (37 landward / 27 seaward), 400 m coastal band. Landward
      * edge traces the real OSM coastline (way 1529960722) NNE from the

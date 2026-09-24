@@ -1,6 +1,7 @@
 import { LiveDataStatus } from '../components/LiveDataStatus'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { AnimatePresence } from 'motion/react'
 import { AdminGate } from '../components/AdminGate'
 import { DemoBanner } from '../components/DemoBanner'
 import { Header } from '../components/Header'
@@ -145,18 +146,20 @@ function AdminDashboard() {
                   immediately. Rejecting dismisses the report and leaves the zone
                   unchanged.
                 </p>
-                <ul className={REPORT_GRID}>
-                  {pendingReports.map((report) => (
-                    <ReportCard
-                      key={report.id}
-                      report={report}
-                      zoneName={zoneNameFor(zones, report.zoneId)}
-                      busy={busyReportId === report.id}
-                      onApprove={() => approveReport(report.id)}
-                      onReject={() => rejectReport(report.id)}
-                    />
-                  ))}
-                </ul>
+                <AnimatePresence initial={false}>
+                  <ul className={REPORT_GRID}>
+                    {pendingReports.map((report) => (
+                      <ReportCard
+                        key={report.id}
+                        report={report}
+                        zoneName={zoneNameFor(zones, report.zoneId)}
+                        busy={busyReportId === report.id}
+                        onApprove={() => approveReport(report.id)}
+                        onReject={() => rejectReport(report.id)}
+                      />
+                    ))}
+                  </ul>
+                </AnimatePresence>
               </>
             )}
           </section>
@@ -170,18 +173,20 @@ function AdminDashboard() {
                 body="Reports you approve or reject are archived here."
               />
             ) : (
-              <ul className={REPORT_GRID}>
-                {reviewedReports.map((report) => (
-                  <ReportCard
-                    key={report.id}
-                    report={report}
-                    zoneName={zoneNameFor(zones, report.zoneId)}
-                    busy={false}
-                    onApprove={() => approveReport(report.id)}
-                    onReject={() => rejectReport(report.id)}
-                  />
-                ))}
-              </ul>
+              <AnimatePresence initial={false}>
+                <ul className={REPORT_GRID}>
+                  {reviewedReports.map((report) => (
+                    <ReportCard
+                      key={report.id}
+                      report={report}
+                      zoneName={zoneNameFor(zones, report.zoneId)}
+                      busy={false}
+                      onApprove={() => approveReport(report.id)}
+                      onReject={() => rejectReport(report.id)}
+                    />
+                  ))}
+                </ul>
+              </AnimatePresence>
             )}
           </section>
         )}

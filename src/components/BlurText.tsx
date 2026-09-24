@@ -78,6 +78,8 @@ type BlurTextProps = {
   stepDuration?: number
   /** Element to render as. Defaults to `<span>` so it is valid inside headings and list items. */
   as?: ElementType
+  /** Optional custom IntersectionObserver root — for scroll containers like the zone drawer. */
+  root?: Element | null
 }
 
 function hasIntersectionObserver(): boolean {
@@ -94,6 +96,7 @@ export function BlurText({
   rootMargin = '0px 0px -10% 0px',
   stepDuration = 0.32,
   as: Tag = 'span',
+  root = null,
 }: BlurTextProps) {
   const reduceMotion = useReducedMotion()
 
@@ -115,9 +118,20 @@ export function BlurText({
     /**
      * The backstop: is the element within the viewport right now? Only then is
      * a stuck observer actually a problem worth overriding.
+     * When a custom root is provided (drawer scroll container), check against
+     * that root's rect instead of the window.
      */
     const onScreen = () => {
       const r = element.getBoundingClientRect()
+      if (root) {
+        const rootRect = root.getBoundingClientRect()
+        return (
+          r.top < rootRect.bottom &&
+          r.bottom > rootRect.top &&
+          r.left < rootRect.right &&
+          r.right > rootRect.left
+        )
+      }
       const h = window.innerHeight || document.documentElement.clientHeight
       const w = window.innerWidth || document.documentElement.clientWidth
       return r.top < h && r.bottom > 0 && r.left < w && r.right > 0
@@ -136,7 +150,7 @@ export function BlurText({
             observer?.disconnect()
           }
         },
-        { threshold, rootMargin },
+        { threshold, rootMargin, root: root ?? null },
       )
       observer.observe(element)
     } catch {
@@ -163,7 +177,7 @@ export function BlurText({
     }
     // `inView` is read to bail out once revealed; re-running after it flips is
     // harmless (the effect returns immediately) and keeps the deps honest.
-  }, [reduceMotion, inView, threshold, rootMargin])
+  }, [reduceMotion, inView, threshold, rootMargin, root])
 
   const segments = useMemo(
     () => (animateBy === 'words' ? text.split(' ') : Array.from(text)),
