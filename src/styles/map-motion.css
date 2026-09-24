@@ -45,11 +45,35 @@
   transition: none;
 }
 
+/* --- Zone tap sonar -------------------------------------------------------
+   One ring, injected into the overlay SVG at the tapped zone's centroid
+   (Map.tsx). It expands and fades, then the node is removed — never a
+   permanent overlay, and not a loop, so the camera gate does not pause it.
+   `r` is a geometry property in the overlay's layer-point user space, so
+   20 → 70 is ~20px → ~70px at the current zoom. */
+@keyframes zone-ping {
+  from {
+    r: 20;
+    opacity: 0.7;
+  }
+  to {
+    r: 70;
+    opacity: 0;
+  }
+}
+
+.leaflet-overlay-pane .zone-ping {
+  pointer-events: none;
+  fill: none;
+  animation: zone-ping 600ms var(--ease-out-quint) forwards;
+}
+
 /* --- 2. Advisory zones: stroke pulse + marching dash ----------------------
    Strokes only — animating fill on these large polygons repaints too much on
    mobile. The pulse swings stroke-opacity 0.6 → 1 on a slow loop; the dash
    marches one double-period (10 + 7 = 17 user units × 2) so the loop is
-   seamless. Advisory polygons keep their red fill untouched.
+   seamless. The fill breathe is a separate class (below) so this shorthand
+   stays the stroke-only animation.
 
    The dashes are also a non-colour signal (the same policy as
    `unconfirmed`'s dashArray in statusTheme.ts): pattern here is 10 7,
@@ -81,12 +105,43 @@
     zone-advisory-dash 7s linear infinite;
 }
 
+/* --- Advisory fill breathe ------------------------------------------------
+   A slow fill lift on live (unselected, unpressed) advisory polygons:
+   rest 0.42 → hover-step 0.54 and back, 4s, no `alternate` — the 0/50/100
+   stops close the loop. Fill only.
+
+   This rule is more specific than the stroke shorthand above, so it restates
+   those two animations rather than replacing them. Loading owns the
+   `animation` shorthand (the fade's `animationend` must still fire), and
+   selected / pressed own `fill-opacity` (0.64 / 0.54) — all three are
+   excluded so the breathe cannot pin a fill over them. */
+@keyframes zone-advisory-breathe {
+  0%,
+  100% {
+    fill-opacity: 0.42;
+  }
+  50% {
+    fill-opacity: 0.54;
+  }
+}
+
+.leaflet-overlay-pane path.zone-path--advisory.zone-path--advisory-breathe:not(.zone-path--loading):not(.zone-path--selected):not(.zone-path--pressed) {
+  animation:
+    zone-advisory-pulse 3.5s ease-in-out infinite,
+    zone-advisory-dash 7s linear infinite,
+    zone-advisory-breathe 4s ease-in-out infinite;
+}
+
 /* --- 3. Status change crossfade -------------------------------------------
    `fill` and `stroke` join the existing ramp: when a zone's status flips,
    Leaflet rewrites the presentation attributes and these transitions
    interpolate the colours over 400ms instead of cutting. This list
    intentionally RESTATES the index.css transitions — it loads after them and
-   adds opacity (for the selection dim) plus the two colour channels. */
+   adds opacity (for the selection dim) plus the two colour channels.
+   The fill *wash* (0.6, then an 800ms decay) is not in this list: the 200ms
+   fill-opacity ramp would swallow it. `ZonePolygon` sets that on the
+   element's inline transition for the wash window only, restating the 400ms
+   colour crossfade, then clears it. */
 .leaflet-overlay-pane path.zone-path {
   transition:
     fill-opacity 200ms var(--ease-out-quint),
@@ -123,7 +178,8 @@
 /* --- Loop gate: no decoration moves while the camera does -----------------
    Applied by <MapLoopGate/> on movestart/zoomstart, cleared on moveend/
    zoomend. Later phases add their loop selectors to this same rule. */
-.leaflet-container.map-motion-paused .leaflet-overlay-pane path.zone-path--advisory {
+.leaflet-container.map-motion-paused .leaflet-overlay-pane path.zone-path--advisory,
+.leaflet-container.map-motion-paused .leaflet-overlay-pane path.zone-path--advisory.zone-path--advisory-breathe:not(.zone-path--loading):not(.zone-path--selected):not(.zone-path--pressed) {
   animation-play-state: paused;
 }
 
@@ -149,6 +205,11 @@ body.map-motion-paused .animate-tide-scan {
     /* The pulse and the march stop; the dashed outline stays as a static
        shape signal at full stroke opacity. */
     animation: none;
+  }
+
+  .leaflet-overlay-pane .zone-ping {
+    animation: none;
+    opacity: 0;
   }
 
   /* Status crossfades, selection dim and tile fades become instant state

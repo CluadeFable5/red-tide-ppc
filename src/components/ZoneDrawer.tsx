@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { motion, useReducedMotion, useTransform } from 'motion/react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { animate, motion, useReducedMotion, useTransform } from 'motion/react'
 import { APP_SPRING } from '../motion/mapMotion'
 import { MorphChevronIcon } from './MorphChevron'
 import { formatRelative } from '../lib/format'
@@ -95,6 +95,47 @@ export interface ZoneDrawerProps {
 const ACTION_LABEL: Record<'open' | 'collapsed', string> = {
   open: 'Collapse the zone drawer',
   collapsed: 'Open the zone drawer',
+}
+
+/**
+ * One scale on the header pip when the drawer opens from collapsed.
+ *
+ * Mount-open (desktop, ≥768) does not pulse — only a collapsed → open
+ * transition. The pip's own `trigger` pulse (status change) is left alone;
+ * this wrapper is the open cue. Reduced motion draws nothing. The wrapper
+ * itself is never blurred: a transform plus backdrop-filter is the mobile
+ * GPU trap this drawer already avoids.
+ */
+function HeaderPipPulse({
+  state,
+  children,
+}: {
+  state: 'open' | 'collapsed'
+  children: React.ReactNode
+}) {
+  const reduceMotion = useReducedMotion()
+  const ref = useRef<HTMLSpanElement>(null)
+  const prev = useRef(state)
+
+  useEffect(() => {
+    const opened = prev.current === 'collapsed' && state === 'open'
+    prev.current = state
+    if (!opened || reduceMotion) return
+    const node = ref.current
+    if (!node) return
+    const controls = animate(
+      node,
+      { scale: [1, 1.4, 1] },
+      { duration: 0.4, ease: 'easeOut' },
+    )
+    return () => controls.stop()
+  }, [state, reduceMotion])
+
+  return (
+    <span ref={ref} className="inline-grid shrink-0 origin-center">
+      {children}
+    </span>
+  )
 }
 
 export function ZoneDrawer({
@@ -310,12 +351,14 @@ export function ZoneDrawer({
                     the one thing that must never truncate at 320px, so it
                     gets the full strip width... */}
                 <div className="flex items-center gap-2.5">
-                  <StatusPip
-                    size="sm"
-                    hex={dominantTheme.hex}
-                    pulses={dominantTheme.pulses}
-                    trigger={dominant}
-                  />
+                  <HeaderPipPulse state={panel.state}>
+                    <StatusPip
+                      size="sm"
+                      hex={dominantTheme.hex}
+                      pulses={dominantTheme.pulses}
+                      trigger={dominant}
+                    />
+                  </HeaderPipPulse>
                   <button
                     type="button"
                     onClick={handleSummaryClick}

@@ -1,0 +1,70 @@
+/* ===========================================================================
+   Landing motion.
+
+   The primary "Open the map" control only. Safety copy and the secondary
+   link stay plain — a hover must never be what makes the route reachable.
+
+   Timing lives on a class, not Tailwind `transition`. The global link
+   shorthand in micro-interactions.css (`transition:` on every `a`) would
+   otherwise own the duration and drop the glow/lift channels.
+   =========================================================================== */
+
+/* Enter 180ms ease-out (set on :hover). Leave and press are 100ms ease-in,
+   which is the resting transition so mouseout and :active share it. */
+.landing-map-cta {
+  transition:
+    translate 100ms ease-in,
+    filter 100ms ease-in,
+    box-shadow 100ms ease-in,
+    scale 100ms ease-in;
+}
+
+.landing-map-cta:hover {
+  translate: 0 -2px;
+  filter: brightness(1.1);
+  box-shadow: 0 4px 20px -4px rgba(240, 165, 0, 0.35);
+  transition-duration: 180ms;
+  transition-timing-function: ease-out;
+}
+
+/* Press reverses the lift and the glow, and dips to the same 0.97 the rest
+   of the app uses (`micro-interactions.css`). Declared after :hover so a
+   held pointer wins those two properties; brightness stays from :hover. */
+.landing-map-cta:active {
+  translate: 0 0;
+  scale: 0.97;
+  box-shadow: none;
+  transition-duration: 100ms;
+  transition-timing-function: ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Brightness only. No lift, no glow, no scale — including the instant
+     version, which would still read as a jump. */
+  .landing-map-cta:hover,
+  .landing-map-cta:active {
+    translate: none;
+    scale: none;
+    box-shadow: none;
+    filter: brightness(1.1);
+  }
+}
+
+/* Right-edge scroll progress. 2px, accent, track at 0.3 / fill at full.
+   `hidden sm:block` owns the <640px hide; this rule hides the bar entirely
+   under reduced motion, including at `sm` where `display: block` would
+   otherwise win. Decorative — it never takes pointer events. */
+.landing-scroll-progress {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.landing-scroll-progress__fill {
+  background: var(--color-accent);
+  transform-origin: top center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-scroll-progress {
+    display: none !important;
+  }
+}

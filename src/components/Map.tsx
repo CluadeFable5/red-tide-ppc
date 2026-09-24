@@ -8,11 +8,11 @@ import {
   focusPaddingFor,
   zoneLoadDelayMs,
 } from '../motion/mapMotion'
-import { ZONE_CASING, zonePaint } from '../styles/statusTheme'
+import { ZONE_CASING, zonePaint, zoneTheme } from '../styles/statusTheme'
 import { IntroGlide, ReportPins, UserLocationDot } from './MapMarkers'
 import '../styles/map-motion.css'
 // `LatLng` here is our own [lat, lng] tuple, which Leaflet accepts directly.
-import type { LatLng, Report, Zone } from '../types'
+import type { LatLng, Report, Zone, ZoneStatus } from '../types'
 import { ShippingLayer } from './ShippingLayer'
 import { ZonePopup } from './ZonePopup'
 
@@ -58,6 +58,117 @@ export interface MapProps {
  * selects exactly the interactive zone polygons — the tests rely on that.)
  */
 const ZONE_CASING_PANE = 'zoneCasingPane'
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+/** Matches `@keyframes zone-ping` (600ms) plus a little slack for cleanup. */
+const ZONE_PING_MS = 680
+/**
+ * Status-change fill wash. ~0.6 is above every resting fill (0.34–0.42) and
+ * under the advisory selected step (0.64), so the flash reads without
+ * looking selected. The decay is longer than the stylesheet's 200ms
+ * fill-opacity ramp, which would otherwise swallow it.
+ */
+const STATUS_WASH_FILL = 0.6
+const STATUS_WASH_MS = 800
+
+/** Fires a one-shot sonar ring for a tapped zone. No-op under reduced motion. */
+type ZonePing = (layer: LeafletPolygon, status: ZoneStatus) => void
+
+/**
+ * Leaflet's overlay renderer is an SVG whose viewBox is in layer points.
+ * The ring has to live in *that* SVG — the one that owns the clicked path —
+ * not the first `<svg>` in the overlay pane. Shipping lines and the casing
+ * pane can each insert an earlier SVG; a pane-wide query would put the ring
+ * in the wrong user space. A React node outside the map would not track the
+ * pane at all.
+ */
+function zoneRendererRoot(layer: LeafletPolygon): Element | null {
+  const path = layer.getElement()
+  if (!path) return null
+
+  // Duck-typed: jsdom does not always expose SVGElement, but `closest` and
+  // `ownerSVGElement` are stable where the renderer actually runs.
+  const owner = (path as { ownerSVGElement?: Element | null }).ownerSVGElement
+  const svg = (owner instanceof Element ? owner : null) ?? path.closest('svg')
+  if (!svg) return null
+
+  // Paths are appended to the renderer's root `<g>` (`_rootGroup`). Walk up
+  // and keep the group whose parent is that SVG.
+  let node: Element | null = path.parentElement
+  let rootGroup: Element | null = null
+  while (node && node !== svg) {
+    if (node.namespaceURI === SVG_NS && node.tagName.toLowerCase() === 'g') {
+      rootGroup = node
+    }
+    node = node.parentElement
+  }
+  return rootGroup ?? svg
+}
+
+/**
+ * Sonar ping on zone tap. One ring at a time: a new tap cancels the previous
+ * ring before it finishes. The node removes itself on `animationend` (and on
+ * a timeout, so a skipped animation cannot leak). Reduced motion selects the
+ * zone and draws nothing.
+ */
+function ZonePingBridge({ fireRef }: { fireRef: { current: ZonePing } }) {
+  const map = useMap()
+  const reduceMotion = useReducedMotion()
+  const activeRef = useRef<SVGCircleElement | null>(null)
+  const timerRef = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    const cancel = () => {
+      if (timerRef.current !== undefined) {
+        window.clearTimeout(timerRef.current)
+        timerRef.current = undefined
+      }
+      activeRef.current?.remove()
+      activeRef.current = null
+    }
+
+    fireRef.current = (layer, status) => {
+      if (reduceMotion) return
+      const root = zoneRendererRoot(layer)
+      if (!root) return
+
+      // Bounds centre, not a stored centroid — the polygon is the source.
+      const point = map.latLngToLayerPoint(layer.getBounds().getCenter())
+      cancel()
+
+      const circle = document.createElementNS(SVG_NS, 'circle')
+      circle.setAttribute('class', 'zone-ping')
+      circle.setAttribute('cx', String(point.x))
+      circle.setAttribute('cy', String(point.y))
+      circle.setAttribute('r', '20')
+      circle.setAttribute('fill', 'none')
+      circle.setAttribute('stroke', zoneTheme(status).hex)
+      circle.setAttribute('stroke-width', '1.5')
+      circle.setAttribute('opacity', '0.7')
+      circle.setAttribute('pointer-events', 'none')
+      root.appendChild(circle)
+      activeRef.current = circle
+
+      const cleanup = () => {
+        if (activeRef.current === circle) activeRef.current = null
+        if (timerRef.current !== undefined) {
+          window.clearTimeout(timerRef.current)
+          timerRef.current = undefined
+        }
+        circle.remove()
+      }
+      circle.addEventListener('animationend', cleanup, { once: true })
+      timerRef.current = window.setTimeout(cleanup, ZONE_PING_MS)
+    }
+
+    return () => {
+      fireRef.current = () => {}
+      cancel()
+    }
+  }, [map, reduceMotion, fireRef])
+
+  return null
+}
 
 /** Publishes the Leaflet instance to the page chrome once the map mounts. */
 function MapReadyBridge({
@@ -314,12 +425,21 @@ function ZonePressFeedback() {
  *  - `--dimmed`    every NON-selected polygon while a selection exists —
  *                  element opacity 0.6, so the chosen zone stands out;
  *  - `--advisory`  advisory polygons: slow stroke pulse + marching dash
- *                  (pure CSS, `map-motion.css` — strokes only, never fills);
+ *                  (pure CSS, `map-motion.css` — strokes only);
+ *  - `--advisory-breathe` the same polygons' fill, a separate class so the
+ *                  breathe rule can restate the stroke animations instead of
+ *                  replacing them. CSS holds it off while loading, selected,
+ *                  or pressed;
  *  - `--loading`   the one-shot load-in fade, added when the layer enters
  *                  the map and removed on `animationend` so its `both` fill
  *                  can never pin a stale fill-opacity over a later status
  *                  change. The per-zone stagger arrives as a custom property
  *                  (`--zone-delay`), not a per-zone selector.
+ *
+ * A status change also flashes the new colour's fill to 0.6 and decays to
+ * the resting level over 800ms (`statusWash`). The colour crossfade itself
+ * stays the 400ms CSS transition in `map-motion.css` — the wash only borrows
+ * the element's inline `transition` for that window, then clears it.
  */
 function ZonePolygon({
   zone,
@@ -332,6 +452,7 @@ function ZonePolygon({
   onLeave,
   pendingCount,
   onReport,
+  pingRef,
 }: {
   zone: Zone
   isSelected: boolean
@@ -344,8 +465,18 @@ function ZonePolygon({
   onLeave: (zoneId: string) => void
   pendingCount: number
   onReport: (zoneId: string) => void
+  /**
+   * Written by `ZonePingBridge` after mount. Read at click time so the first
+   * render's no-op is not captured into the handler.
+   */
+  pingRef: { current: ZonePing }
 }) {
+  const reduceMotion = useReducedMotion()
   const layerRef = useRef<LeafletPolygon | null>(null)
+  // Seeded with the mount status so the first paint is not a wash.
+  const prevStatusRef = useRef(zone.status)
+  const interactionRef = useRef({ isSelected, isHovered })
+  interactionRef.current = { isSelected, isHovered }
   const modifiersRef = useRef({
     selected: isSelected,
     dimmed: isDimmed,
@@ -363,6 +494,10 @@ function ZonePolygon({
     el.classList.toggle('zone-path--selected', modifiersRef.current.selected)
     el.classList.toggle('zone-path--dimmed', modifiersRef.current.dimmed)
     el.classList.toggle('zone-path--advisory', modifiersRef.current.advisory)
+    el.classList.toggle(
+      'zone-path--advisory-breathe',
+      modifiersRef.current.advisory,
+    )
   }
 
   useEffect(() => {
@@ -409,6 +544,78 @@ function ZonePolygon({
     }
     // The stagger index is fixed for the life of a zone layer.
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Status colour-wash. Mount does not flash — `prevStatusRef` starts at the
+  // current status. A later change snaps fill-opacity to 0.6 (new colour) and
+  // decays to the resting level over 800ms. The inline transition restates
+  // the 400ms fill/stroke crossfade so this override does not cut the colour
+  // change down to the stylesheet's 200ms fill-opacity ramp, then clears so
+  // hover/press get that ramp back. Reduced motion leaves the colour cut
+  // instant (the CSS `transition: none` rule) and skips the flash.
+  useEffect(() => {
+    const previous = prevStatusRef.current
+    if (previous === zone.status) return
+    prevStatusRef.current = zone.status
+
+    const layer = layerRef.current
+    if (!layer) return
+
+    const paintNow = zonePaint(zone.status)
+    const restingFill = () => {
+      const { isSelected: selected, isHovered: hovered } = interactionRef.current
+      return selected
+        ? paintNow.fillSelected
+        : hovered
+          ? paintNow.fillHover
+          : paintNow.fill
+    }
+
+    if (reduceMotion) {
+      layer.setStyle({
+        color: paintNow.hex,
+        fillColor: paintNow.hex,
+        fillOpacity: restingFill(),
+      })
+      return
+    }
+
+    const el = layer.getElement() as SVGPathElement | undefined
+    const colour =
+      'fill 400ms var(--ease-out-quint), stroke 400ms var(--ease-out-quint)'
+    const rest =
+      'stroke-width 200ms var(--ease-out-quint), stroke-opacity 200ms var(--ease-out-quint), opacity 200ms var(--ease-out-quint)'
+
+    if (el) el.style.transition = `${colour}, fill-opacity 0s, ${rest}`
+    layer.setStyle({
+      color: paintNow.hex,
+      fillColor: paintNow.hex,
+      fillOpacity: STATUS_WASH_FILL,
+    })
+    // Commit 0.6 before the decay starts, or the browser collapses both
+    // writes into one transition and the flash never paints.
+    el?.getBoundingClientRect()
+    if (el) {
+      el.style.transition = `${colour}, fill-opacity ${STATUS_WASH_MS}ms var(--ease-out-quint), ${rest}`
+    }
+    layer.setStyle({ fillOpacity: restingFill() })
+
+    const timer = window.setTimeout(() => {
+      if (el) el.style.transition = ''
+    }, STATUS_WASH_MS + 40)
+
+    return () => {
+      window.clearTimeout(timer)
+      if (el) el.style.transition = ''
+      layer.setStyle({
+        color: paintNow.hex,
+        fillColor: paintNow.hex,
+        fillOpacity: restingFill(),
+      })
+      // StrictMode replays this effect. Revert so the replay still sees a
+      // change; a finished wash has already painted the resting fill.
+      prevStatusRef.current = previous
+    }
+  }, [zone.status, reduceMotion])
 
   const paint = zonePaint(zone.status)
   const weight = isSelected ? paint.weightSelected : paint.weight
@@ -458,7 +665,11 @@ function ZonePolygon({
         dashArray: paint.dashArray,
       }}
       eventHandlers={{
-        click: () => onSelectZone(zone.id),
+        click: () => {
+          onSelectZone(zone.id)
+          const layer = layerRef.current
+          if (layer) pingRef.current(layer, zone.status)
+        },
         mouseover: () => onHover(zone.id),
         mouseout: () => onLeave(zone.id),
       }}
@@ -539,6 +750,9 @@ export function Map({
   // touchdown) and the ramp has no head start. `<ZonePressFeedback/>` covers
   // that window from the native `pointerdown`.
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null)
+  // Stable slot the ping bridge writes into. Zone polygons call it on click;
+  // until the bridge mounts (and under reduced motion) it is a no-op.
+  const pingRef = useRef<ZonePing>(() => {})
 
   return (
     <MapContainer
@@ -568,6 +782,7 @@ export function Map({
       <IntroGlide />
       <FocusZone zone={focusZone} token={focusToken} reserveRightPx={focusReserveRight} />
       <ZonePressFeedback />
+      <ZonePingBridge fireRef={pingRef} />
       <MapLoopGate />
       <ReportPins reports={reports} zones={zones} />
       <UserLocationDot />
@@ -596,6 +811,7 @@ export function Map({
           }
           pendingCount={pendingCounts[zone.id] ?? 0}
           onReport={onReport}
+          pingRef={pingRef}
         />
       ))}
     </MapContainer>

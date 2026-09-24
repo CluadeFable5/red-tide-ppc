@@ -1,7 +1,7 @@
 import { LiveDataStatus } from '../components/LiveDataStatus'
-import { useMemo, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { motion, useReducedMotion } from 'motion/react'
+import { animate, motion, useReducedMotion, useScroll, useSpring } from 'motion/react'
 import type { Variants } from 'motion/react'
 import { BlurText } from '../components/BlurText'
 import { CountUp } from '../components/CountUp'
@@ -12,6 +12,7 @@ import { HeroBackdrop } from '../components/HeroBackdrop'
 import { StatusPip } from '../components/StatusPip'
 import { Waves } from '../components/Waves'
 import { prefetchMapPage } from '../App'
+import '../styles/landing-motion.css'
 import { dominantZoneStatus } from '../motion/readouts'
 import { zoneTheme } from '../styles/statusTheme'
 import { selectPendingCountByZone, useAppStore } from '../store'
@@ -48,10 +49,12 @@ import type { ZoneStatus } from '../types'
  *
  * WHAT IS DELIBERATELY NOT ANIMATED
  * ---------------------------------
- * The CTAs, the "what is red tide" primer, the `DemoBanner` and the
- * "not an official BFAR advisory" disclaimer are plain DOM. This is a public
- * health surface: safety copy and the route to the map must never depend on
- * an animation, an observer or a WebGL context succeeding.
+ * The secondary CTA, the "what is red tide" primer, the `DemoBanner` and the
+ * "not an official BFAR advisory" disclaimer are plain DOM. The primary
+ * "Open the map" link has a CSS hover only (`landing-motion.css`) — present
+ * and clickable on the first frame; reduced motion keeps brightness without
+ * the lift or glow. Safety copy and the route to the map must never depend
+ * on an animation, an observer or a WebGL context succeeding.
  */
 /**
  * The "How it works" steps. Extracted only so each can carry its own scroll
@@ -86,6 +89,22 @@ export function Landing() {
   const zonesReady = useAppStore((state) => state.zonesReady)
   const reportsReady = useAppStore((state) => state.reportsReady)
   const reduceMotion = useReducedMotion()
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  const titleGlowRef = useRef<{ stop: () => void } | null>(null)
+  // Latest preference, so the decrypt callback (stored in a ref inside
+  // DecryptedText) does not restart the scramble when this identity changes.
+  const reduceMotionRef = useRef(reduceMotion)
+  reduceMotionRef.current = reduceMotion
+
+  useEffect(() => {
+    if (!reduceMotion) return
+    titleGlowRef.current?.stop()
+    if (titleRef.current) titleRef.current.style.filter = ''
+  }, [reduceMotion])
+
+  useEffect(() => {
+    return () => titleGlowRef.current?.stop()
+  }, [])
 
   const counts = useMemo(() => {
     const result: Record<ZoneStatus, number> = { safe: 0, unconfirmed: 0, advisory: 0 }
@@ -164,6 +183,10 @@ export function Landing() {
     typeof window !== 'undefined' && typeof window.IntersectionObserver === 'function'
 
   return (
+    <>
+      {/* Outside the overflow-x-clip root: that clip can make `fixed`
+          relative to the page instead of the viewport. */}
+      <LandingScrollProgress />
     <div className="relative min-h-dvh overflow-x-clip bg-ink text-paper">
       <LiveDataStatus />
       {/*
@@ -171,7 +194,10 @@ export function Landing() {
         the page so it does not repaint the same pixels the hero's Ferrofluid
         panel already owns. One animated layer per band of the page.
       */}
-      <Waves className="absolute inset-0 h-full w-full [mask-image:linear-gradient(to_bottom,transparent_0,transparent_380px,black_620px)]" />
+      <Waves
+        advisoryActive={zonesReady && counts.advisory > 0}
+        className="absolute inset-0 h-full w-full [mask-image:linear-gradient(to_bottom,transparent_0,transparent_380px,black_620px)]"
+      />
 
       <div className="relative flex min-h-dvh flex-col">
         <Header
@@ -248,10 +274,32 @@ export function Landing() {
                       label lives on the heading itself: the scrambling text is
                       aria-hidden, so a screen reader never reads the glyphs. */}
                   <h1
+                    ref={titleRef}
                     aria-label="Red Tide"
                     className="font-display mt-4 text-7xl leading-[0.9] text-paper sm:mt-3 sm:text-8xl xl:text-9xl"
                   >
-                    <DecryptedText text="RED TIDE" />
+                    <DecryptedText
+                      text="RED TIDE"
+                      onComplete={() => {
+                        // Reduced motion keeps the resolved title and skips the
+                        // glow. The 100ms delay is the breath after the last
+                        // character locks, not a gate on the heading.
+                        if (reduceMotionRef.current) return
+                        const node = titleRef.current
+                        if (!node) return
+                        titleGlowRef.current?.stop()
+                        titleGlowRef.current = animate(
+                          node,
+                          {
+                            filter: [
+                              'drop-shadow(0 0 12px rgba(255, 82, 82, 0.6))',
+                              'drop-shadow(0 0 0px rgba(255, 82, 82, 0))',
+                            ],
+                          },
+                          { duration: 1.2, ease: 'easeOut', delay: 0.1 },
+                        )
+                      }}
+                    />
                   </h1>
 
                   {/* The subheading blurs in by words, after the scramble has had
@@ -265,13 +313,13 @@ export function Landing() {
                     className="mt-5 block max-w-md text-base leading-relaxed text-muted sm:mt-4 sm:text-lg xl:max-w-lg xl:text-xl"
                   />
 
-                  {/* NOT ANIMATED. The route to the map is the whole point of this
-                      page; it must be there and clickable on the first frame. */}
+                  {/* Clickable on the first frame. Hover lift/glow is CSS only
+                      (landing-motion.css); it never gates the route. */}
                   <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-4 sm:mt-8 sm:gap-y-3">
                     <Link
                       to="/map"
                       {...MAP_CTA_PREFETCH}
-                      className="rounded-lg bg-accent px-6 py-3 text-base font-semibold text-ink transition hover:brightness-110 active:scale-95"
+                      className="landing-map-cta rounded-lg bg-accent px-6 py-3 text-base font-semibold text-ink"
                     >
                       Open the map
                     </Link>
@@ -446,6 +494,32 @@ export function Landing() {
         </main>
       </div>
     </div>
+    </>
+  )
+}
+
+/**
+ * 2px reading progress on the right edge. `useScroll` + a heavily damped
+ * spring drive `scaleY` from the top. Hooks always run; reduced motion and
+ * viewports below `sm` hide the bar in CSS so it cannot gate a CTA.
+ * z-800 sits above page content and under the landing header (z-900).
+ */
+function LandingScrollProgress() {
+  const { scrollYProgress } = useScroll()
+  const scaleY = useSpring(scrollYProgress, {
+    stiffness: 70,
+    damping: 32,
+    mass: 0.4,
+    restDelta: 0.001,
+  })
+
+  return (
+    <div
+      aria-hidden="true"
+      className="landing-scroll-progress pointer-events-none fixed inset-y-0 right-0 z-[800] hidden w-0.5 sm:block"
+    >
+      <motion.div className="landing-scroll-progress__fill absolute inset-0" style={{ scaleY }} />
+    </div>
   )
 }
 
@@ -466,7 +540,7 @@ function Figure({
       <p
         className={`font-display text-3xl leading-none tabular-nums sm:text-4xl xl:text-5xl ${valueClass ?? 'text-paper'}`}
       >
-        {ready ? <CountUp to={value} /> : <span aria-hidden="true">·</span>}
+        {ready ? <CountUp to={value} from={0} duration={1.2} /> : <span aria-hidden="true">·</span>}
       </p>
       <p className="mt-1.5 text-[11px] leading-snug text-faint lg:mt-2 lg:text-xs">{label}</p>
     </div>
