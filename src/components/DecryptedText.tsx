@@ -54,21 +54,38 @@ export function DecryptedText({
   text,
   delay = 0,
   className = '',
+  onComplete,
 }: {
   text: string
   /** Wait this long (ms) before the scramble starts. */
   delay?: number
   className?: string
+  /**
+   * Fires once when the last character locks, and on the immediate
+   * plain-text paths (reduced motion, below `sm`). Held in a ref so an
+   * inline callback cannot restart the scramble.
+   */
+  onComplete?: () => void
 }) {
   const reduceMotion = useReducedMotion()
   const [display, setDisplay] = useState<string>(() =>
     reduceMotion || smallViewport() ? text : scrambled(text),
   )
   const finishedRef = useRef(false)
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
+  const notifiedTextRef = useRef<string | null>(null)
 
   useEffect(() => {
+    const notify = () => {
+      if (notifiedTextRef.current === text) return
+      notifiedTextRef.current = text
+      onCompleteRef.current?.()
+    }
+
     if (reduceMotion || smallViewport() || finishedRef.current) {
       setDisplay(text)
+      notify()
       return
     }
 
@@ -98,6 +115,7 @@ export function DecryptedText({
           if (interval !== undefined) window.clearInterval(interval)
           setDisplay(text)
           finishedRef.current = true
+          notify()
         }
       }, TICK_MS)
     }, delay)

@@ -43,10 +43,36 @@ const LAYERS: WaveLayer[] = [
 
 /** Minimum ms between drawn frames — caps the loop at ~30 fps. */
 const FRAME_INTERVAL_MS = 33
+/** Rest amber (`#f0a500`) → redder amber (`#e27036`, hsl ~20) while an advisory is up. */
+const TINT_MS = 1500
+const REST_RGB = [0xf0, 0xa5, 0x00] as const
+const ADVISORY_RGB = [0xe2, 0x70, 0x36] as const
 
-export function Waves({ className = '' }: { className?: string }) {
+function tintedStroke(mix: number): string {
+  const r = Math.round(REST_RGB[0] + (ADVISORY_RGB[0] - REST_RGB[0]) * mix)
+  const g = Math.round(REST_RGB[1] + (ADVISORY_RGB[1] - REST_RGB[1]) * mix)
+  const b = Math.round(REST_RGB[2] + (ADVISORY_RGB[2] - REST_RGB[2]) * mix)
+  return `rgb(${r}, ${g}, ${b})`
+}
+
+export function Waves({
+  className = '',
+  advisoryActive = false,
+}: {
+  className?: string
+  /**
+   * True once zones are ready and at least one is advisory. Read from a ref
+   * inside the draw loop — it must not be an effect dependency, or the loop
+   * restarts and the stroke/rAF counts change.
+   */
+  advisoryActive?: boolean
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const reduceMotion = useReducedMotion()
+  const advisoryRef = useRef(advisoryActive)
+  advisoryRef.current = advisoryActive
+  const stillFrameRef = useRef<(() => void) | null>(null)
+  const paintedAdvisoryRef = useRef(advisoryActive)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -78,7 +104,35 @@ export function Waves({ className = '' }: { className?: string }) {
       g.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
 
-    function drawLayer(layer: WaveLayer, t: number): void {
+    // 0 = rest amber, 1 = advisory amber. Starts at rest so a flag that is
+    // already set still eases across 1.5s inside this loop. Reduced motion
+    // snaps in strokeColor and never uses this clock.
+    let mix = 0
+    let mixFrom = 0
+    let mixTo = 0
+    let shiftStart = 0
+
+    function strokeColor(tSeconds: number): string {
+      const target = advisoryRef.current ? 1 : 0
+      if (reduceMotion) {
+        mix = target
+        mixTo = target
+        return tintedStroke(mix)
+      }
+      if (target !== mixTo) {
+        mixFrom = mix
+        mixTo = target
+        shiftStart = tSeconds
+      }
+      if (mix !== mixTo) {
+        const elapsed = Math.min(1, (tSeconds - shiftStart) / (TINT_MS / 1000))
+        const eased = 1 - (1 - elapsed) ** 3
+        mix = mixFrom + (mixTo - mixFrom) * eased
+      }
+      return tintedStroke(mix)
+    }
+
+    function drawLayer(layer: WaveLayer, t: number, color: string): void {
       g.beginPath()
       for (let x = -6; x <= width + 6; x += 6) {
         const primary = Math.sin((x / layer.wavelength) * Math.PI * 2 + t * layer.speed + layer.phase)
@@ -94,14 +148,15 @@ export function Waves({ className = '' }: { className?: string }) {
         else g.lineTo(x, y)
       }
       g.globalAlpha = layer.alpha
-      g.strokeStyle = layer.color
+      g.strokeStyle = color
       g.lineWidth = 1
       g.stroke()
     }
 
     function frame(t: number): void {
+      const color = strokeColor(t)
       g.clearRect(0, 0, width, height)
-      for (const layer of LAYERS) drawLayer(layer, t)
+      for (const layer of LAYERS) drawLayer(layer, t, color)
       g.globalAlpha = 1
     }
 
@@ -139,8 +194,14 @@ export function Waves({ className = '' }: { className?: string }) {
 
     resize()
 
+    // Reduced motion redraws this one frame when the advisory flag flips.
+    // The mount draw below is the only paint on first commit — this ref
+    // must not be called again from the same mount.
+    stillFrameRef.current = () => frame(2.5)
+
     if (reduceMotion) {
-      // One still frame: the motif is present, nothing moves.
+      // One still frame: the motif is present, nothing moves. The tint is
+      // already the target colour (strokeColor snaps under reduced motion).
       frame(2.5)
     } else {
       start()
@@ -156,11 +217,23 @@ export function Waves({ className = '' }: { className?: string }) {
 
     return () => {
       stop()
+      stillFrameRef.current = null
       document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('resize', onResize)
       observer?.disconnect()
     }
+    // advisoryActive is intentionally absent: putting it here restarts the
+    // loop and breaks the stroke / rAF counts.
   }, [reduceMotion])
+
+  // Instant tint when the flag changes under reduced motion. The mount frame
+  // already painted the current value, so this does not draw on first commit.
+  useEffect(() => {
+    if (!reduceMotion) return
+    if (paintedAdvisoryRef.current === advisoryActive) return
+    paintedAdvisoryRef.current = advisoryActive
+    stillFrameRef.current?.()
+  }, [advisoryActive, reduceMotion])
 
   return (
     <canvas

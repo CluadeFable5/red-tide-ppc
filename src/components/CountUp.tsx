@@ -15,27 +15,39 @@ import { useReducedMotion } from 'motion/react'
  */
 export function CountUp({
   to,
+  from = 0,
   duration = 1.1,
   decimals = 0,
   prefix = '',
   suffix = '',
   className = '',
+  onComplete,
 }: {
   to: number
+  /**
+   * First-run start. Later updates still continue from the value on screen,
+   * so a live feed does not jump back to `from`.
+   */
+  from?: number
   /** Count duration in seconds for the first run; shorter for updates. */
   duration?: number
   decimals?: number
   prefix?: string
   suffix?: string
   className?: string
+  /** Fires when a run settles. Held in a ref so an inline callback cannot restart the tween. */
+  onComplete?: () => void
 }) {
   const reduceMotion = useReducedMotion()
   const [inView, setInView] = useState(false)
-  const [value, setValue] = useState(0)
-  const shownRef = useRef(0)
+  const [value, setValue] = useState(from)
+  const shownRef = useRef(from)
   const startedRef = useRef(false)
   const frameRef = useRef<number | undefined>(undefined)
   const spanRef = useRef<HTMLSpanElement | null>(null)
+  const onCompleteRef = useRef(onComplete)
+  onCompleteRef.current = onComplete
+  const completedToRef = useRef<number | null>(null)
 
   // Start when the figure becomes visible. jsdom has no IntersectionObserver,
   // so fall straight through there (and in any environment without it).
@@ -63,22 +75,31 @@ export function CountUp({
     if (reduceMotion) {
       shownRef.current = to
       setValue(to)
+      if (completedToRef.current !== to) {
+        completedToRef.current = to
+        onCompleteRef.current?.()
+      }
       return
     }
 
     const firstRun = !startedRef.current
     startedRef.current = true
-    const from = shownRef.current
+    const startValue = shownRef.current
     const ms = (firstRun ? duration : Math.min(duration, 0.6)) * 1000
     const start = performance.now()
 
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / ms)
       const eased = 1 - Math.pow(1 - t, 3)
-      const next = from + (to - from) * eased
+      const next = startValue + (to - startValue) * eased
       shownRef.current = next
       setValue(next)
-      if (t < 1) frameRef.current = requestAnimationFrame(tick)
+      if (t < 1) {
+        frameRef.current = requestAnimationFrame(tick)
+      } else if (completedToRef.current !== to) {
+        completedToRef.current = to
+        onCompleteRef.current?.()
+      }
     }
 
     frameRef.current = requestAnimationFrame(tick)
