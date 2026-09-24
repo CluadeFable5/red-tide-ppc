@@ -2,6 +2,7 @@ import { LiveDataStatus } from '../components/LiveDataStatus'
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Map as LeafletMap } from 'leaflet'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { RegistrationMarks, Scanline } from '../components/Ambient'
 import { AdvisoryDrawer } from '../components/AdvisoryDrawer'
 import { DemoBanner } from '../components/DemoBanner'
@@ -93,6 +94,7 @@ export function MapPage() {
   const selectZone = useAppStore((state) => state.selectZone)
   const openReportForm = useAppStore((state) => state.openReportForm)
   const closeReportForm = useAppStore((state) => state.closeReportForm)
+  const reduceMotion = useReducedMotion()
 
   const [resetToken, setResetToken] = useState(0)
   const [focusToken, setFocusToken] = useState(0)
@@ -347,7 +349,20 @@ export function MapPage() {
         © OpenStreetMap contributors
       </a>
 
-      {!zonesReady && <MapLoadingOverlay />}
+      <AnimatePresence initial={false}>
+        {!zonesReady && (
+          <motion.div
+            key="map-loading-overlay"
+            className="absolute inset-0 z-[1005]"
+            initial={false}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
+          >
+            <MapLoadingOverlay />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ------------------------------------------------------------------
           Layer 4: modals.

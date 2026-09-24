@@ -132,6 +132,35 @@
     zone-advisory-breathe 4s ease-in-out infinite;
 }
 
+/* --- Zone hover cursor glow ------------------------------------------------
+   Fine-pointer only, and only while the pointer is actually over a zone path.
+   `<ZoneHoverGlowBridge/>` writes the cursor coordinate and status colour as
+   CSS variables directly on the Leaflet container, so pointer movement never
+   re-renders React or touches polygon geometry. The overlay is inert and tiny:
+   a low-alpha radial wash that confirms "this water shape is live" without
+   hiding map labels or advisory strokes. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .leaflet-container.map-zone-hover-glow::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 450;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(
+      circle 96px at var(--map-hover-x, 50%) var(--map-hover-y, 50%),
+      color-mix(in srgb, var(--map-hover-color, var(--color-accent)) 20%, transparent) 0%,
+      color-mix(in srgb, var(--map-hover-color, var(--color-accent)) 10%, transparent) 38%,
+      transparent 72%
+    );
+    transition: opacity 140ms var(--ease-out-quint);
+  }
+
+  .leaflet-container.map-zone-hover-glow.map-zone-hover-glow-active::after {
+    opacity: 1;
+  }
+}
+
 /* --- 3. Status change crossfade -------------------------------------------
    `fill` and `stroke` join the existing ramp: when a zone's status flips,
    Leaflet rewrites the presentation attributes and these transitions

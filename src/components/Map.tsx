@@ -395,6 +395,120 @@ function ZonePressFeedback() {
 }
 
 /**
+ * Fine-pointer hover glow over zone polygons.
+ *
+ * The polygon fill already lifts on hover; this adds the higher-level cursor
+ * affordance without putting pointer coordinates in React state. Leaflet owns
+ * the SVG paths, so the bridge delegates native pointer events from the map
+ * container, writes CSS variables (`--map-hover-x/y/color`) directly onto that
+ * container, and lets `map-motion.css` paint a tiny pointer-transparent radial
+ * gradient. No zone geometry or render cycle is involved.
+ */
+function ZoneHoverGlowBridge() {
+  const map = useMap()
+  const reduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    const container = map.getContainer()
+    const canHover =
+      !reduceMotion &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(hover: hover) and (pointer: fine)').matches
+
+    if (!canHover) {
+      container.classList.remove('map-zone-hover-glow', 'map-zone-hover-glow-active')
+      return
+    }
+
+    let raf: number | undefined
+    let latestPoint: { x: number; y: number } | null = null
+
+    function cleanupFrame() {
+      if (raf !== undefined) {
+        window.cancelAnimationFrame(raf)
+        raf = undefined
+      }
+      latestPoint = null
+    }
+
+    function clearGlow() {
+      container.classList.remove('map-zone-hover-glow-active')
+    }
+
+    function zoneStatusFor(target: SVGPathElement): ZoneStatus | null {
+      const status = target.dataset.zoneStatus
+      return status === 'safe' || status === 'unconfirmed' || status === 'advisory'
+        ? status
+        : null
+    }
+
+    function activateGlow(target: SVGPathElement) {
+      const status = zoneStatusFor(target)
+      if (!status) return
+      container.style.setProperty('--map-hover-color', zoneTheme(status).hex)
+      container.classList.add('map-zone-hover-glow-active')
+    }
+
+    function schedulePosition(event: PointerEvent) {
+      latestPoint = { x: event.clientX, y: event.clientY }
+      if (raf !== undefined) return
+      raf = window.requestAnimationFrame(() => {
+        raf = undefined
+        if (!latestPoint) return
+        const rect = container.getBoundingClientRect()
+        container.style.setProperty('--map-hover-x', `${latestPoint.x - rect.left}px`)
+        container.style.setProperty('--map-hover-y', `${latestPoint.y - rect.top}px`)
+      })
+    }
+
+    function pathFromEvent(event: PointerEvent): SVGPathElement | null {
+      const target = event.target
+      if (!isZonePath(target)) return null
+      return target.classList.contains('zone-path') ? target : null
+    }
+
+    function onPointerMove(event: PointerEvent) {
+      const target = pathFromEvent(event)
+      if (!target) {
+        clearGlow()
+        return
+      }
+      activateGlow(target)
+      schedulePosition(event)
+    }
+
+    function onPointerOut(event: PointerEvent) {
+      const next = event.relatedTarget
+      if (
+        isZonePath(next) &&
+        next.classList.contains('zone-path')
+      ) {
+        return
+      }
+      clearGlow()
+    }
+
+    container.classList.add('map-zone-hover-glow')
+    container.addEventListener('pointermove', onPointerMove, { passive: true })
+    container.addEventListener('pointerout', onPointerOut, { passive: true })
+    container.addEventListener('pointerleave', clearGlow, { passive: true })
+
+    return () => {
+      container.removeEventListener('pointermove', onPointerMove)
+      container.removeEventListener('pointerout', onPointerOut)
+      container.removeEventListener('pointerleave', clearGlow)
+      cleanupFrame()
+      container.classList.remove('map-zone-hover-glow', 'map-zone-hover-glow-active')
+      container.style.removeProperty('--map-hover-x')
+      container.style.removeProperty('--map-hover-y')
+      container.style.removeProperty('--map-hover-color')
+    }
+  }, [map, reduceMotion])
+
+  return null
+}
+
+/**
  * One zone polygon, with its modifier classes kept in sync imperatively.
  *
  * WHY THE CLASS APPLICATION IS SPLIT IN TWO
@@ -481,11 +595,13 @@ function ZonePolygon({
     selected: isSelected,
     dimmed: isDimmed,
     advisory: zone.status === 'advisory',
+    status: zone.status,
   })
   modifiersRef.current = {
     selected: isSelected,
     dimmed: isDimmed,
     advisory: zone.status === 'advisory',
+    status: zone.status,
   }
 
   const syncModifierClasses = () => {
@@ -498,6 +614,7 @@ function ZonePolygon({
       'zone-path--advisory-breathe',
       modifiersRef.current.advisory,
     )
+    el.setAttribute('data-zone-status', modifiersRef.current.status)
   }
 
   useEffect(() => {
@@ -782,6 +899,7 @@ export function Map({
       <IntroGlide />
       <FocusZone zone={focusZone} token={focusToken} reserveRightPx={focusReserveRight} />
       <ZonePressFeedback />
+      <ZoneHoverGlowBridge />
       <ZonePingBridge fireRef={pingRef} />
       <MapLoopGate />
       <ReportPins reports={reports} zones={zones} />

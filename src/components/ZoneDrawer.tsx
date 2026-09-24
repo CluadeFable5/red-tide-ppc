@@ -183,10 +183,10 @@ export function ZoneDrawer({
       hidden: {},
       show: {
         transition: {
-          // 40ms per card — the Phase-2 spec. The reveal rides the same
-          // controller as the drag spring; only the stagger is tuned here.
-          staggerChildren: reduceMotion ? 0 : 0.04,
-          delayChildren: reduceMotion ? 0 : 0.04,
+          // 65ms per card: still restrained, but perceptible across the
+          // seven-zone list while the drawer itself is opening.
+          staggerChildren: reduceMotion ? 0 : 0.065,
+          delayChildren: reduceMotion ? 0 : 0.065,
         },
       },
     }),
