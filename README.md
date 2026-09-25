@@ -219,7 +219,7 @@ src/
   types.ts                # Zone / Report domain types (no DOM, no Firebase)
   store.ts                # ALL datastore calls + app state (Zustand)
   data/
-    zones.ts              # the six pre-seeded zones + polygon helper
+    zones.ts              # the seven pre-seeded zones + polygon helper
     coastline.ts          # generated dense OSM coastline runs (test reference)
     shipping.ts           # PPTSS shipping-channel lines (PCG circular transcription)
   lib/
@@ -340,7 +340,7 @@ Each zone is a **single simple polygon of 63–270 vertices**: a nearshore band 
 
 **How they are generated** (and re-generated — do not hand-edit the coordinates):
 
-1. CI (`.github/workflows/fetch-coastline.yml`) runs `scripts/fetch-coastline.mjs`, which pulls every `natural=coastline` way in the six zone bboxes from Overpass plus the documented ways from the OSM API, and commits the raw geometry to `scripts/coastline-cache/osm-coastline.json` (the dev sandbox has no egress to those APIs).
+1. CI (`.github/workflows/fetch-coastline.yml`) runs `scripts/fetch-coastline.mjs`, which pulls every `natural=coastline` way in the seven zone bboxes from Overpass plus the documented ways from the OSM API, and commits the raw geometry to `scripts/coastline-cache/osm-coastline.json` (the dev sandbox has no egress to those APIs).
 2. `npx tsx scripts/generate-zones.ts` walks the coastline graph (Dijkstra between per-zone anchors), bridges thin out-and-back spurs (piers, fish pens — only where the bridge chord stays within 15 m of the real coast), builds the buffer, verifies **landward deviation ≤ 15 m, ring simplicity, pairwise non-overlap and band width**, then writes `src/data/zones.ts` and `src/data/coastline.ts`.
 3. `src/data/zones.test.ts` asserts the property that actually matters: **every point of the landward edge within 20 m of the real coastline**, plus simplicity and non-overlap — so the "jagged blade" or "floating offshore strip" regressions fail CI instead of waiting for a human to eyeball screenshots.
 
